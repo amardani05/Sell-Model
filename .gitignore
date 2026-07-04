@@ -1,0 +1,37 @@
+## Secrets
+.env
+.env.local
+.env*.local
+.vercel
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Cached pipeline data (root-level cache) — but keep the PIT membership store + fallback
+/data/*.parquet
+/data/price_cache/
+/data/*.tmp
+!data/sp600_membership.csv
+!data/sp600_fallback.csv
+
+# Generated outputs (root-level)
+output/
+
+# Webapp build artifacts — NEVER commit these
+webapp/node_modules/
+webapp/dist/
+webapp/.env
+webapp/.env.local
+
+# Allow pipeline-generated data into git (these populate the deployed site)
+!webapp/public/data/
+!webapp/public/meta.json
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,105 @@
+{
+  "generated_at": "2026-07-03T23:53:58.386617Z",
+  "model": "Relative Sell Model (sector neutral relative underperformance ranking)",
+  "universe_size": 600,
+  "n_sectors": 11,
+  "n_cross_sections": 34,
+  "panel_rows": 20400,
+  "n_delisted_carried": 0,
+  "horizon_q": 1,
+  "horizons_available": [
+    1,
+    2
+  ],
+  "benchmark": "IJR",
+  "source": "yfinance",
+  "cost_bps": 10.0,
+  "neutralize_method": "zscore",
+  "n_factors": 15,
+  "factor_groups": {
+    "pe_ratio": "Valuation",
+    "ev_to_ebitda": "Valuation",
+    "ps_ratio": "Valuation",
+    "fcf_yield": "Valuation",
+    "mom_12_1": "Momentum",
+    "reversal_1m": "Momentum",
+    "roe": "Quality",
+    "roa": "Quality",
+    "gross_margin": "Quality",
+    "fcf_margin": "Quality",
+    "roe_yoy": "Quality",
+    "gross_margin_yoy": "Quality",
+    "asset_growth_yoy": "Investment",
+    "net_issuance_yoy": "Investment",
+    "accruals_ocf_ni": "Earnings Quality",
+    "est_revision_3m": "Estimates",
+    "sue": "Estimates"
+  },
+  "learned_weights_enabled": true,
+  "default_score": "score_ew",
+  "membership_point_in_time": false,
+  "use_estimate_factors": false,
+  "diagnostics": {
+    "placebo": {
+      "real_ic": 0.016729551151946402,
+      "real_t": 1.0800725428855598,
+      "placebo_ic_mean": 0.0028260544958718667,
+      "placebo_ic_std": 0.00661219307503819,
+      "tolerance": 0.03,
+      "passed": true
+    },
+    "lookahead": {
+      "no_label_in_features": {
+        "n_features": 15,
+        "leak_columns": [],
+        "passed": true
+      },
+      "price_factor_truncation": {
+        "checked": 6764,
+        "mismatches": 0,
+        "passed": true
+      },
+      "passed": true
+    },
+    "survivorship": {
+      "delisting_carried": {
+        "delisted_carried": true,
+        "survivor_scored": true,
+        "terminal_return": -1.0,
+        "passed": true
+      },
+      "membership": {
+        "real_point_in_time": false,
+        "passed": true,
+        "note": "current only membership is survivorship biased"
+      },
+      "passed": true
+    },
+    "all_passed": true
+  },
+  "sector_colors": {
+    "Information Technology": "#4e79a7",
+    "Health Care": "#59a14f",
+    "Financials": "#9c755f",
+    "Consumer Discretionary": "#edc948",
+    "Industrials": "#76b7b2",
+    "Materials": "#b07aa1",
+    "Consumer Staples": "#ff9da7",
+    "Energy": "#e15759",
+    "Utilities": "#bab0ac",
+    "Real Estate": "#86bcb6",
+    "Communication Services": "#f28e2b",
+    "Unknown": "#cccccc"
+  },
+  "torpedo_tier_colors": {
+    "Stable": "#2c7a4b",
+    "Mainstream": "#c98a00",
+    "Elevated": "#b3001b"
+  },
+  "torpedo_tier_order": [
+    "Stable",
+    "Mainstream",
+    "Elevated"
+  ],
+  "n_torpedo_features": 16
+}
