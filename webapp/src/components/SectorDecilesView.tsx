@@ -3,6 +3,7 @@ import { Bundle, fmtSigned, decileColor } from "../lib/data";
 import { Plot } from "./Plot";
 import { DataTable } from "./DataTable";
 import { Term } from "./Term";
+import { Ticker } from "./TickerFlag";
 import { ScoreRow } from "../lib/types";
 
 export function SectorDecilesView({ meta, scores, sectorDeciles }: Bundle) {
@@ -31,6 +32,20 @@ export function SectorDecilesView({ meta, scores, sectorDeciles }: Bundle) {
           whole cheap or expensive sectors. Decile 1 = best expected relative return, decile {n} = the sell
           sleeve. Counts are the latest cross section.
         </p>
+        <div className="help-note">
+          <strong>Why compare inside a sector.</strong> Whole sectors move together and trade at very different
+          valuations, so a raw market wide ranking would mostly tell you that, say, software is pricier than
+          banks. Ranking each name only against its own sector strips that out and asks the sharper question,
+          which names look weak <em>relative to the companies they most resemble</em>. That is what makes the
+          signal about the stock rather than about the sector it happens to sit in.
+        </div>
+        <div className="help-note">
+          <strong>Reading the map.</strong> Each row is a sector and each column is a decile from best (1) to
+          worst ({n}); darker cells hold more names. Because deciles are formed inside each sector, every row
+          spreads its names across all ten columns, so no sector is entirely a buy or entirely a sell. Pick a
+          sector below to see its names ranked, alongside the individual factor readings that drove each score,
+          where a larger positive number is more unfavorable.
+        </div>
         <Plot height={Math.max(280, sectors.length * 36)}
           data={[{
             type: "heatmap",
@@ -55,7 +70,7 @@ export function SectorDecilesView({ meta, scores, sectorDeciles }: Bundle) {
           rows={inSector}
           rowKey={(r) => r.ticker}
           columns={[
-            { key: "ticker", label: "Ticker" },
+            { key: "ticker", label: "Ticker", render: (r) => <Ticker symbol={r.ticker} index={r.index_name} /> },
             { key: "decile", label: "Decile", align: "right", render: (r) => (
               <span className="decile-pill" style={{ background: decileColor(r.decile, n) }}>{r.decile ?? "—"}</span>
             ) },

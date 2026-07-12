@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Bundle, fmtSigned, decileColor } from "../lib/data";
 import { DataTable } from "./DataTable";
 import { Term } from "./Term";
+import { Ticker } from "./TickerFlag";
 import { ScoreRow } from "../lib/types";
 
 // Default long only sleeve overlaid out of the box; user can paste their own.
@@ -37,6 +38,16 @@ export function PortfolioOverlayView({ meta, scores }: Bundle) {
           <strong> worst decile (10)</strong> are the ones the model says are most likely to underperform their
           sector peers over the next {meta.horizon_q}Q, the review or trim candidates.
         </p>
+        <div className="help-note">
+          <strong>What this tells you, and what it does not.</strong> Your holdings are matched to the same sector
+          neutral ranking used everywhere else on the site. A holding in decile 10 is one the model considers a
+          likely laggard against its sector peers over the next {meta.horizon_q} quarter(s), a prompt to review or
+          trim rather than an automatic sell. Middle deciles are unremarkable, and deciles 1 to 3 look attractive
+          relative to peers. The mean decile is a quick read on whether the whole sleeve leans cheap or rich on
+          these signals. Keep in mind the score is <em>relative</em>: a decile 10 name can still rise in an up
+          market, the model only expects it to rise less than its sector, so read this as a shortlist for a closer
+          look, not a trade instruction.
+        </div>
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} spellCheck={false} />
         <div className="overlay-summary">
           <span><strong>{held.length}</strong> matched</span>
@@ -52,7 +63,7 @@ export function PortfolioOverlayView({ meta, scores }: Bundle) {
           rows={[...held].sort((a, b) => (b.score ?? -99) - (a.score ?? -99))}
           rowKey={(r) => r.ticker}
           columns={[
-            { key: "ticker", label: "Ticker" },
+            { key: "ticker", label: "Ticker", render: (r) => <Ticker symbol={r.ticker} index={r.index_name} /> },
             { key: "gics_sector", label: "GICS Sector" },
             { key: "decile", label: "Decile", align: "right", render: (r) => (
               <span className="decile-pill" style={{ background: decileColor(r.decile, n) }}>{r.decile ?? "—"}</span>

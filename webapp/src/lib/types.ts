@@ -19,6 +19,7 @@ export interface Meta {
   learned_weights_enabled: boolean;
   default_score: string;
   membership_point_in_time: boolean;
+  index_counts?: Record<string, number>;
   use_estimate_factors: boolean;
   diagnostics: Diagnostics;
   sector_colors: Record<string, string>;
@@ -38,6 +39,7 @@ export interface ScoreRow {
   date: string;
   ticker: string;
   gics_sector: string;
+  index_name?: string | null;
   score: number | null;
   decile: number | null;
   n_factors_used: number;
@@ -50,7 +52,7 @@ export interface ScoreRow {
 }
 
 export interface TorpedoName {
-  ticker: string; gics_sector: string; torpedo_score: number | null;
+  ticker: string; gics_sector: string; index_name?: string | null; torpedo_score: number | null;
   torpedo_pct: number | null; torpedo_tier: string | null;
   decile: number | null; score: number | null; short_pct_float: number | null;
 }

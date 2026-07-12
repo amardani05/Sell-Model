@@ -49,7 +49,7 @@ def export_scores(latest: pd.DataFrame, score_col: str, decile_col: str) -> None
     """
     factor_n = [f"{f}__n" for f in config.active_factors() if f"{f}__n" in latest.columns]
     torp = [c for c in ["torpedo_score", "torpedo_pct", "torpedo_tier"] if c in latest.columns]
-    keep = ["date", "ticker", "gics_sector", score_col, decile_col, "n_factors_used",
+    keep = ["date", "ticker", "gics_sector", "index_name", score_col, decile_col, "n_factors_used",
             "short_pct_float"] + torp + factor_n
     df = latest[[c for c in keep if c in latest.columns]].copy()
     df = df.rename(columns={score_col: "score", decile_col: "decile"})
@@ -65,7 +65,7 @@ def export_torpedo(latest: pd.DataFrame, score_col: str, decile_col: str) -> Non
                 "tier_order": [t[2] for t in config.TORPEDO_TIERS]}, "torpedo")
         return
     df = latest.rename(columns={score_col: "score", decile_col: "decile"})
-    keep = ["ticker", "gics_sector", "torpedo_score", "torpedo_pct", "torpedo_tier",
+    keep = ["ticker", "gics_sector", "index_name", "torpedo_score", "torpedo_pct", "torpedo_tier",
             "decile", "score", "short_pct_float"]
     cols = [c for c in keep if c in df.columns]
     df = df[cols].dropna(subset=["torpedo_pct"]).sort_values("torpedo_pct", ascending=False)
@@ -151,7 +151,7 @@ def export_backtest(results: dict) -> None:
 
 def export_meta(*, universe_size, n_sectors, horizon_q, source, learned_enabled,
                 default_score, membership_is_pit, diagnostics, n_cross_sections,
-                cost_bps, panel_rows, n_delisted) -> None:
+                cost_bps, panel_rows, n_delisted, index_counts=None) -> None:
     payload = {
         "generated_at": datetime.utcnow().isoformat() + "Z",
         "model": "Relative Sell Model (sector neutral relative underperformance ranking)",
@@ -171,6 +171,7 @@ def export_meta(*, universe_size, n_sectors, horizon_q, source, learned_enabled,
         "learned_weights_enabled": bool(learned_enabled),
         "default_score": default_score,
         "membership_point_in_time": bool(membership_is_pit),
+        "index_counts": index_counts or {},
         "use_estimate_factors": config.USE_ESTIMATE_FACTORS,
         "diagnostics": diagnostics,
         "sector_colors": _SECTOR_COLORS,
@@ -196,6 +197,18 @@ def export_all(*, latest, score_col, decile_col, factor_ic, horizon_q,
                ic_summaries, decile_summaries, calibration, comparison,
                backtests, meta_kwargs) -> None:
     _ensure()
+    # Stamp each name with its index membership (S&P 600 vs 400) for the UI flag.
+    try:
+        from universe import index_membership_map
+        imap = index_membership_map()
+        latest = latest.copy()
+        latest["index_name"] = latest["ticker"].map(imap).fillna("")
+        counts = latest["index_name"].value_counts().to_dict()
+        meta_kwargs = {**meta_kwargs, "index_counts": {k: int(v) for k, v in counts.items() if k}}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("index membership flag unavailable: %s", exc)
+        latest = latest.copy()
+        latest["index_name"] = ""
     export_scores(latest, score_col, decile_col)
     export_sector_deciles(latest, decile_col)
     export_torpedo(latest, score_col, decile_col)

@@ -23,6 +23,17 @@ export function FactorICView({ factorIC }: Bundle) {
           high <Term id="accruals">accruals</Term>) actually predicts sector relative underperformance. Bars are
           colored by factor family; the whisker is one standard error.
         </p>
+        <div className="help-note">
+          <strong>What a factor is, and what this chart proves.</strong> A factor is a single measurable trait,
+          for example how expensive a stock is or how much its share count grew over the past year. The model
+          bets that each trait, pointed in its historically unfavorable direction, comes before weaker returns.
+          This chart tests each trait on its own. A bar to the right of zero means that trait, by itself, leaned
+          correctly toward the names that went on to underperform their peers; bars near zero added little in this
+          sample. The blended sell score is simply the average of all these traits, so families that lean
+          positive here are the ones carrying the signal, while families near zero are along for diversification
+          rather than punch. A single strong factor is fragile; agreement across several families is what makes
+          the combined ranking sturdier than any one input.
+        </div>
         <Plot height={Math.max(320, rows.length * 26)}
           data={[{
             type: "bar", orientation: "h",

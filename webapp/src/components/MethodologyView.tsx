@@ -19,6 +19,18 @@ export function MethodologyView({ meta }: Bundle) {
       <section className="card span-12 prose">
         <h2>Methodology</h2>
 
+        <div className="help-note">
+          <strong>Plain language summary.</strong> This tool tries to spot the stocks most likely to lag their
+          peers, not the market as a whole. It does that with a short list of traits that decades of market
+          research have tied to weaker future returns: paying up for a stock, buying one that has already been
+          falling, thin or shrinking profitability, aggressive expansion or share issuance, and earnings that are
+          not backed by real cash. Each trait is scored against other companies in the same sector, so we are
+          always comparing like with like, and the traits are blended into one number per stock that sorts every
+          sector into ten buckets. The rest of this page explains how each piece is built, and just as importantly
+          how we check that the ranking was genuinely right in the past rather than lucky. Every underlined term
+          has a definition on hover.
+        </div>
+
         <h3>The question</h3>
         <p>
           Rank S&amp;P 600 (SmallCap) and S&amp;P 400 (MidCap) stocks by expected <strong>relative
@@ -56,6 +68,16 @@ export function MethodologyView({ meta }: Bundle) {
             <li key={g}><strong>{g}</strong> — {DIRECTION_NOTE[g] ?? ""}: <code>{byGroup(g).join(", ")}</code></li>
           ))}
         </ul>
+        <div className="help-note">
+          <strong>Why these traits and not others.</strong> Each one is a documented market pattern, not a hunch.
+          Cheap stocks have tended to beat expensive ones (the value effect), recent winners have tended to keep
+          winning over a medium horizon (momentum), profitable and improving companies have tended to beat weak
+          ones (the quality effect), companies that expand or issue shares aggressively have tended to disappoint
+          (the asset growth and dilution effects), and earnings backed by cash rather than accounting entries have
+          tended to persist (the accruals effect). Pointing each trait in its unfavorable direction and averaging
+          them is what turns established research into a single sell ranking. We deliberately leave out anything we
+          cannot measure honestly from the data on hand, such as analyst estimate revisions, rather than fake it.
+        </div>
 
         <h3>Construction (sequenced to avoid the equal weight versus fitted inconsistency)</h3>
         <ol>
@@ -99,6 +121,16 @@ export function MethodologyView({ meta }: Bundle) {
           <li><strong><Term id="walkforward">Walk forward</Term> only</strong>: features at t use data on or
             before t; labels use returns in the window after t.</li>
         </ul>
+        <div className="help-note">
+          <strong>Why validation is the whole point.</strong> A ranking that looks reasonable can still be
+          worthless, so before trusting any name on the list we insist the ranking earned it. The Information
+          Coefficient asks whether high scores really came before weak relative returns; the decile spread asks
+          whether the best and worst buckets actually separated; the backtest asks whether trading the ranking
+          would have paid after costs. The placebo, look ahead, and survivorship checks on the Overview then rule
+          out the three most common ways these tests fool you: a score that only looks predictive by accident, a
+          feature that secretly peeks at the future, and a universe that quietly drops the losers. Passing all of
+          them is what separates a real edge from a good looking chart.
+        </div>
 
         <h3>Point in time data and survivorship</h3>
         <p>Universe membership is read from a <Term id="pointintime">point in time</Term> store

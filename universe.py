@@ -265,6 +265,49 @@ def all_known_tickers() -> pd.DataFrame:
     return latest[["ticker", "company", "gics_sector"]].reset_index(drop=True)
 
 
+INDEX_MEMBERSHIP_JSON = config.DATA_DIR / "index_membership.json"
+
+
+def index_membership_map(force_refresh: bool = False) -> dict[str, str]:
+    """Map ticker -> "S&P 600" (SmallCap) or "S&P 400" (MidCap) for the UI flag.
+
+    Scrapes both current constituent lists once and caches the result to
+    ``data/index_membership.json``. A name present in both lists is labeled
+    "S&P 600" (600 is written last so it wins). Best effort: on a scrape failure
+    it returns whatever is cached, else an empty map (the flag simply renders as
+    unknown for those tickers).
+    """
+    import json
+
+    if (not force_refresh and INDEX_MEMBERSHIP_JSON.exists()
+            and (time.time() - INDEX_MEMBERSHIP_JSON.stat().st_mtime) < config.CACHE_MAX_AGE_SECONDS):
+        try:
+            return json.loads(INDEX_MEMBERSHIP_JSON.read_text())
+        except Exception:  # noqa: BLE001
+            pass
+
+    mapping: dict[str, str] = {}
+    for url, label, min_count in [
+        (config.SP400_WIKI_URL, "S&P 400", 300),
+        (config.SP600_WIKI_URL, "S&P 600", 400),  # written last -> wins ties
+    ]:
+        try:
+            df = _scrape_wikipedia_index(url, label, min_count)
+            for t in df["ticker"]:
+                mapping[_normalize_ticker(t)] = label
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("index map: %s scrape failed: %s", label, exc)
+
+    if mapping:
+        INDEX_MEMBERSHIP_JSON.write_text(json.dumps(mapping))
+    elif INDEX_MEMBERSHIP_JSON.exists():
+        try:
+            return json.loads(INDEX_MEMBERSHIP_JSON.read_text())
+        except Exception:  # noqa: BLE001
+            pass
+    return mapping
+
+
 def membership_panel(dates: list[pd.Timestamp]) -> pd.DataFrame:
     """Long frame [date, ticker, company, gics_sector] of who was a member when."""
     frames = []

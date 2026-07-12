@@ -3,6 +3,7 @@ import { Bundle, fmt, fmtSigned, decileColor } from "../lib/data";
 import { Plot } from "./Plot";
 import { DataTable } from "./DataTable";
 import { Term } from "./Term";
+import { Ticker } from "./TickerFlag";
 import { ScoreRow } from "../lib/types";
 
 export function Overview({ meta, scores, validation }: Bundle) {
@@ -36,6 +37,24 @@ export function Overview({ meta, scores, validation }: Bundle) {
             lives on its own tab and in the contrast scatter.</div>
           <div><span className="pill pill-grey">Earnings event model</span> is a binary post earnings
             classifier; this has no event window and a continuous return rank label.</div>
+        </div>
+        <div className="help-note">
+          <strong>How the score is built, in plain terms.</strong> For every stock we measure a handful of well
+          known warning signs: it looks expensive, it has been lagging, its profits are thin or slipping, it is
+          expanding its asset base or share count aggressively, and its earnings are not backed by cash. Each
+          signal is compared only against other companies in the same sector, then blended into a single number.
+          A high number means the stock looks worse than its sector peers on the very traits that have
+          historically come before underperformance. We then sort each sector into ten buckets, called
+          <Term id="decile"> deciles</Term>, from the most attractive (1) to the most at risk (10). Decile 10 is
+          the sell sleeve.
+        </div>
+        <div className="help-note">
+          <strong>The four tiles below are the model's report card.</strong> They answer one question: over the
+          past several years, did a high score actually come before weak returns versus sector peers? A positive
+          <Term id="ic"> Information Coefficient</Term> and <Term id="decile">decile</Term> spread, a
+          <Term id="hitrate"> hit rate</Term> above one in two, and a <Term id="monotonicity">monotonicity</Term>
+          near minus one all point the same way, that the ranking carried real information. Values near zero mean
+          the ranking was no better than chance in this sample. Hover any underlined term for its definition.
         </div>
       </section>
 
@@ -79,7 +98,7 @@ export function Overview({ meta, scores, validation }: Bundle) {
           rowKey={(r) => r.ticker}
           columns={[
             { key: "sell_rank", label: "#", render: (r) => r.sell_rank ?? "—" },
-            { key: "ticker", label: "Ticker" },
+            { key: "ticker", label: "Ticker", render: (r) => <Ticker symbol={r.ticker} index={r.index_name} /> },
             { key: "gics_sector", label: "GICS Sector" },
             { key: "decile", label: "Decile", align: "right", render: (r) => (
               <span className="decile-pill" style={{ background: decileColor(r.decile) }}>{r.decile ?? "—"}</span>

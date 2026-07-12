@@ -30,6 +30,16 @@ export function ValidationBacktestView({ meta, validation, backtest }: Bundle) {
           only: features at t use data on or before t, labels use returns in the window after t out to t plus {h}
           quarters.
         </p>
+        <div className="help-note">
+          <strong>This page is the honesty check.</strong> Anyone can rank stocks; the real question is whether
+          the ranking was right often enough to matter. The <Term id="ic">Information Coefficient</Term> measures
+          how well the score lined up with what actually happened next, one cross section at a time, with positive
+          meaning skill and a <Term id="tstat">t statistic</Term> above about two meaning the result is unlikely
+          to be luck. The decile and <Term id="calibration">calibration</Term> charts show the same thing from the
+          portfolio angle: did the names we liked beat the names we flagged, in order. The backtests then turn the
+          ranking into a simple traded strategy, after costs, so you can judge the size of the edge rather than
+          just its direction. Use the horizon switch to compare one quarter versus two quarters ahead.
+        </div>
         <div className="metric-row">
           <Metric label={<>Mean <Term id="ic">IC</Term></>} value={fmtSigned(ic?.mean_ic)} good={(ic?.mean_ic ?? 0) > 0} />
           <Metric label={<><Term id="tstat">t statistic</Term> (<Term id="neweywest">NW</Term>)</>} value={fmt(ic?.t_stat)} good={Math.abs(ic?.t_stat ?? 0) > 2} />
@@ -110,6 +120,16 @@ export function ValidationBacktestView({ meta, validation, backtest }: Bundle) {
       </section>
 
       <h2 className="span-12 section-head">Backtest — quarterly rebalance, {meta.cost_bps} <Term id="turnover">bps</Term> cost</h2>
+      <div className="help-note span-12">
+        <strong>Two ways to trade the same ranking.</strong> The first sleeve is long only: hold the universe but
+        drop the worst decile in each sector, and compare the growth of one dollar to simply owning the
+        <Term id="benchmark"> benchmark</Term>. The second is a market neutral long short: buy the best decile and
+        short the worst, so it profits from the <em>gap</em> between them whether the market rises or falls. <Term id="turnover">Turnover</Term> is how
+        much of the book trades each quarter, which is what the cost assumption is charged on. The goal is a rising
+        line that beats the dotted benchmark with a respectable <Term id="sharpe">Sharpe</Term> and a shallow
+        <Term id="maxdd"> drawdown</Term>. Treat these as evidence about the ranking, not a live track record: the
+        current only universe means history is survivorship friendly, as flagged on the Overview.
+      </div>
       {Object.entries(backtest).map(([key, sleeve]) => (
         <SleeveCard key={key} sleeve={sleeve} benchmark={meta.benchmark} />
       ))}

@@ -69,6 +69,11 @@ export default function App() {
           horizon {m.horizon_q}Q · source <code>{m.source}</code> ·
           default score <code>{m.default_score}</code> ·
           generated {new Date(m.generated_at).toLocaleString()}
+          <br />
+          <span className="idx-legend">
+            <span><span className="idx-flag idx-600">600</span> S&amp;P SmallCap 600{m.index_counts?.["S&P 600"] ? ` (${m.index_counts["S&P 600"]})` : ""}</span>
+            <span><span className="idx-flag idx-400">400</span> S&amp;P MidCap 400{m.index_counts?.["S&P 400"] ? ` (${m.index_counts["S&P 400"]})` : ""}</span>
+          </span>
         </span>
       </header>
 

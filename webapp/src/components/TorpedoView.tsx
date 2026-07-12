@@ -2,6 +2,7 @@ import { Bundle, fmt, fmtSigned, decileColor } from "../lib/data";
 import { Plot } from "./Plot";
 import { DataTable } from "./DataTable";
 import { Term } from "./Term";
+import { Ticker } from "./TickerFlag";
 import { TorpedoName } from "../lib/types";
 
 export function TorpedoView({ meta, scores, torpedo }: Bundle) {
@@ -18,7 +19,7 @@ export function TorpedoView({ meta, scores, torpedo }: Bundle) {
     return {
       type: "scatter" as const, mode: "markers" as const, name: s,
       x: sp.map((p) => p.score), y: sp.map((p) => p.torpedo_pct),
-      text: sp.map((p) => `${p.ticker} · ${s}<br>sell decile ${p.decile} · torpedo ${Math.round(p.torpedo_pct ?? 0)}`),
+      text: sp.map((p) => `${p.ticker}${p.index_name ? " (" + p.index_name + ")" : ""} · ${s}<br>sell decile ${p.decile} · torpedo ${Math.round(p.torpedo_pct ?? 0)}`),
       hovertemplate: "%{text}<extra></extra>",
       marker: { size: 7, color: meta.sector_colors[s] ?? "#888", opacity: 0.8 },
     };
@@ -40,6 +41,15 @@ export function TorpedoView({ meta, scores, torpedo }: Bundle) {
           Read the two views together. The sell model asks <em>will this lag its sector peers</em>; the torpedo
           asks <em>is this dangerous outright</em>. A cheap defensive name can be a sector relative sell yet a low
           torpedo risk; a whole frothy sector can screen high on the torpedo while its deciles net to neutral.
+        </div>
+        <div className="help-note">
+          <strong>The four corners of the scatter below.</strong> Top right is the danger zone: a name that both
+          looks weak against its sector peers and screens as risky against the whole market, the strongest case
+          to review. Bottom right is a sector relative sell that is not otherwise fragile, often a fully valued
+          but stable business that may simply lag cheaper peers. Top left is an outright risk that is still middle
+          of the pack within its own sector, common when an entire sector is stretched. Bottom left is the
+          comfortable zone, neither a relative laggard nor an absolute risk. The tiers below (Stable, Mainstream,
+          Elevated) are plain language bands on the same absolute risk percentile.
         </div>
         <div className="quad-legend">
           {torpedo.tier_order.map((t) => {
@@ -83,7 +93,7 @@ export function TorpedoView({ meta, scores, torpedo }: Bundle) {
           rows={torpedo.names.slice(0, 30)}
           rowKey={(r) => r.ticker}
           columns={[
-            { key: "ticker", label: "Ticker" },
+            { key: "ticker", label: "Ticker", render: (r) => <Ticker symbol={r.ticker} index={r.index_name} /> },
             { key: "gics_sector", label: "GICS Sector" },
             { key: "torpedo_tier", label: "Tier", render: (r) => (
               <span className="tier-pill" style={{ background: tierColors[r.torpedo_tier ?? ""] ?? "#999" }}>{r.torpedo_tier ?? "—"}</span>

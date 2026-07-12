@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-11T21:18:05.457311Z",
+  "generated_at": "2026-07-12T19:56:41.212328Z",
   "model": "Relative Sell Model (sector neutral relative underperformance ranking)",
   "universe_size": 994,
   "n_sectors": 11,
@@ -38,6 +38,10 @@
   "learned_weights_enabled": true,
   "default_score": "score_ew",
   "membership_point_in_time": false,
+  "index_counts": {
+    "S&P 600": 581,
+    "S&P 400": 398
+  },
   "use_estimate_factors": false,
   "diagnostics": {
     "placebo": {
