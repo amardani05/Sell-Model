@@ -62,7 +62,7 @@ export default function App() {
       <header className="top-bar">
         <div>
           <h1>Relative Sell Model</h1>
-          <span className="tagline">Sector neutral ranking of expected <em>relative underperformance</em> · S&amp;P 600</span>
+          <span className="tagline">Sector neutral ranking of expected <em>relative underperformance</em> · S&amp;P 600 + 400</span>
         </div>
         <span className="sub">
           {m.universe_size} names · {m.n_sectors} sectors · {m.n_cross_sections} quarterly cross sections ·

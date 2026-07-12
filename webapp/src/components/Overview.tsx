@@ -23,7 +23,7 @@ export function Overview({ meta, scores, validation }: Bundle) {
       <section className="card span-12 contrast">
         <h2>What this model answers</h2>
         <p>
-          Rank S&amp;P 600 stocks by expected <strong>relative underperformance versus their <Term id="gics">GICS</Term> sector
+          Rank S&amp;P 600 and 400 stocks by expected <strong>relative underperformance versus their <Term id="gics">GICS</Term> sector
           peers</strong> over the next {meta.horizon_q} quarter(s). The output is a continuous
           <Term id="relativereturn"> relative risk</Term> score and a <Term id="sectorneutral">sector
           neutral</Term> <Term id="decile" /> (1 = best expected relative return, 10 = the sell sleeve).

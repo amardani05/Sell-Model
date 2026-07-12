@@ -266,6 +266,9 @@ FINRA_SHORT_INTEREST_URL: str = (
 )
 
 SP600_WIKI_URL: str = "https://en.wikipedia.org/wiki/List_of_S%26P_600_companies"
+# S&P 400 (MidCap) is unioned into the universe so names that graduated out of the
+# 600 up into the 400 are still scored and still match in the portfolio overlay.
+SP400_WIKI_URL: str = "https://en.wikipedia.org/wiki/List_of_S%26P_400_companies"
 USER_AGENT: str = (
     "Relative Sell Model/1.0 (Student equity research; contact: dani@navaslabs.com)"
 )

@@ -125,11 +125,11 @@ def has_real_membership() -> bool:
 # =============================================================================
 # Current membership (Wikipedia) — fallback + seeding
 # =============================================================================
-def _scrape_current_wikipedia() -> pd.DataFrame:
-    """Scrape today's S&P 600 constituents. Columns: ticker, company, gics_sector."""
-    logger.info("Scraping current S&P 600 constituents from Wikipedia")
-    headers = {"User Agent": config.USER_AGENT}
-    resp = requests.get(config.SP600_WIKI_URL, headers=headers, timeout=30)
+def _scrape_wikipedia_index(url: str, index_label: str, min_count: int) -> pd.DataFrame:
+    """Scrape one Wikipedia constituent table. Columns: ticker, company, gics_sector."""
+    logger.info("Scraping current %s constituents from Wikipedia", index_label)
+    headers = {"User-Agent": config.USER_AGENT}
+    resp = requests.get(url, headers=headers, timeout=30)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -144,7 +144,7 @@ def _scrape_current_wikipedia() -> pd.DataFrame:
             df = cand
             break
     if df is None:
-        raise RuntimeError("Could not locate S&P 600 constituent table on Wikipedia")
+        raise RuntimeError(f"Could not locate {index_label} constituent table on Wikipedia")
 
     rename = {}
     for c in df.columns:
@@ -163,10 +163,29 @@ def _scrape_current_wikipedia() -> pd.DataFrame:
     df["ticker"] = df["ticker"].map(_normalize_ticker)
     df = df.drop_duplicates(subset=["ticker"]).reset_index(drop=True)
 
-    if len(df) < 400:
-        raise RuntimeError(f"Suspiciously few tickers scraped ({len(df)})")
-    logger.info("Scraped %d current S&P 600 constituents", len(df))
+    if len(df) < min_count:
+        raise RuntimeError(f"Suspiciously few {index_label} tickers scraped ({len(df)})")
+    logger.info("Scraped %d current %s constituents", len(df), index_label)
     return df
+
+
+def _scrape_current_wikipedia() -> pd.DataFrame:
+    """Scrape today's combined S&P 600 + S&P 400 universe.
+
+    The S&P 400 (MidCap) is unioned in so that names which have graduated out of
+    the S&P 600 up into the 400 are still scored and still match in the portfolio
+    overlay. Duplicates (a ticker appearing on both lists) keep the first.
+    """
+    sp600 = _scrape_wikipedia_index(config.SP600_WIKI_URL, "S&P 600", 400)
+    try:
+        sp400 = _scrape_wikipedia_index(config.SP400_WIKI_URL, "S&P 400", 300)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("S&P 400 scrape failed (%s); proceeding with S&P 600 only", exc)
+        sp400 = pd.DataFrame(columns=["ticker", "company", "gics_sector"])
+    combined = pd.concat([sp600, sp400], ignore_index=True)
+    combined = combined.drop_duplicates(subset=["ticker"]).reset_index(drop=True)
+    logger.info("Combined universe: %d names (S&P 600 + S&P 400)", len(combined))
+    return combined
 
 
 def _seed_store_from_current() -> pd.DataFrame:

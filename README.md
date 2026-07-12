@@ -1,9 +1,11 @@
 # Relative Sell Model
 
-Rank S&P 600 stocks by expected **relative underperformance versus their GICS sector
-peers** over a forward horizon (default 1 and 2 quarters). The output is a continuous
-relative risk score and a **sector neutral decile**, validated as a cross sectional
-return ranking problem.
+Rank S&P 600 (SmallCap) and S&P 400 (MidCap) stocks by expected **relative
+underperformance versus their GICS sector peers** over a forward horizon (default 1 and 2
+quarters). The output is a continuous relative risk score and a **sector neutral decile**,
+validated as a cross sectional return ranking problem. The S&P 400 is unioned in so names
+that graduate out of the 600 up into the 400 are still scored and still match in the
+portfolio overlay.
 
 The label for every name on every rebalance date is its **sector relative forward
 return**:
@@ -67,7 +69,7 @@ CLI flags: `--synthetic`, `--since YYYY-MM-DD`, `--horizon-q {1,2}`, `--cost-bps
 | Module | Role |
 |---|---|
 | `config.py` | factor taxonomy, sector neutral **red flag direction** map, horizons, cost bps, rebalance freq, model + estimate source flags, paths |
-| `universe.py` | **point in time** S&P 600 membership store loader + Wikipedia current fallback (warns loudly) |
+| `universe.py` | **point in time** S&P 600 + 400 membership store loader + Wikipedia current fallback (warns loudly) |
 | `data_loader.py` | deep price history (delisting aware), shallow yfinance fundamentals, short interest |
 | `feature_engine.py` | sector relative factor computation (`get_field` alias pattern), the panel, **delisting aware forward relative returns**, sector neutralization |
 | `model.py` | equal weight baseline + optional **walk forward** learned weight model; sector neutral deciles |

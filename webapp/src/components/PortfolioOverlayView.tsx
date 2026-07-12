@@ -4,8 +4,11 @@ import { DataTable } from "./DataTable";
 import { Term } from "./Term";
 import { ScoreRow } from "../lib/types";
 
-// A sample long only sleeve to overlay out of the box; user can paste their own.
-const SAMPLE = "AAP, AX, ACMR, ALHC, AIR, ALGT, ALKS, BBT, BCC, BOOT";
+// Default long only sleeve overlaid out of the box; user can paste their own.
+const SAMPLE = [
+  "TDS", "PRDO", "MCRI", "CVCO", "UNFI", "CRGY", "AX", "PFBC", "ENVA", "NEOG",
+  "KRYS", "FSS", "GTES", "MYRG", "DOCN", "KLIC", "VIAV", "CE", "CTRE", "AVA",
+].join(", ");
 
 export function PortfolioOverlayView({ meta, scores }: Bundle) {
   const [text, setText] = useState(SAMPLE);

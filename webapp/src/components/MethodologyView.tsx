@@ -21,8 +21,10 @@ export function MethodologyView({ meta }: Bundle) {
 
         <h3>The question</h3>
         <p>
-          Rank S&amp;P 600 stocks by expected <strong>relative underperformance versus their
-          <Term id="gics"> GICS</Term> sector peers</strong> over a forward horizon (default {meta.horizon_q}Q).
+          Rank S&amp;P 600 (SmallCap) and S&amp;P 400 (MidCap) stocks by expected <strong>relative
+          underperformance versus their <Term id="gics"> GICS</Term> sector peers</strong> over a forward
+          horizon (default {meta.horizon_q}Q). The S&amp;P 400 is unioned in so names that graduated out of the
+          600 up into the 400 are still scored.
           The label for every name on every rebalance date is its <Term id="relativereturn">sector relative
           forward return</Term>: the stock return minus the median return of its sector peers over the same
           window. This is a cross sectional return ranking problem, not a risk flag screen and not an event
