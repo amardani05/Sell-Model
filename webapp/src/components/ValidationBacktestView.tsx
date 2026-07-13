@@ -38,6 +38,11 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
     })),
   ];
 
+  // roadmap 1.6: IC weighted family blend diagnostics
+  const icwW = validation.icw_weights ?? [];
+  const icwFams = Array.from(new Set(icwW.map((r) => r.family)));
+  const icwPaired = validation.icw_paired;
+
   const sleeves = backtest.sleeves ?? {};
   const holdAll = sleeves["hold_all"];
   const avoid = sleeves["avoid_worst"];
@@ -448,6 +453,60 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
         {(exclusions?.rows?.length ?? 0) > 8 && (
           <p className="muted small">…and {(exclusions?.rows?.length ?? 0) - 8} more in <code>data/exclusions.json</code>.</p>
         )}
+      </section>
+
+      {/* ================= IC WEIGHTED BLEND ================= */}
+      <section className="card span-12">
+        <h3>IC weighted family blend: the transparent middle ground</h3>
+        <p className="muted small">
+          The third scorer in the comparison above. Family weights at each date are proportional to the
+          family's trailing mean <Term id="ic">IC</Term> over the last {validation.icw_params?.window ?? 36}
+          {" "}realized cross sections, then shrunk halfway back toward equal weight, because family IC
+          estimates are noisy and only half the weight should follow the evidence (the shrinkage idea is
+          James Stein; the reference on combining signals is Grinold and Kahn chapter 10). A family whose
+          trailing IC is negative is muted to zero, never inverted: learning to bet <em>against</em> a family
+          is extra freedom deliberately left to the learned model. Strictly point in time: a cross section's
+          IC enters the window only after its forward label has fully realized, and until
+          {" "}{validation.icw_params?.min_realized ?? 12} realized ICs exist the blend stays equal weight.
+        </p>
+        {icwPaired && (
+          <p className="small">
+            Paired per date IC tests: <strong>blend minus equal weight</strong>
+            {" "}{fmtSigned(icwPaired.icw_vs_equal_weight?.mean_diff, 4)} (t = {fmt(icwPaired.icw_vs_equal_weight?.t_stat)});
+            {" "}<strong>learned minus blend</strong>
+            {" "}{fmtSigned(icwPaired.learned_vs_icw?.mean_diff, 4)} (t = {fmt(icwPaired.learned_vs_icw?.t_stat)}).
+            The default score decision remains learned vs baseline; this section is evidence for a PM call,
+            never a silent switch.
+          </p>
+        )}
+        {icwW.length ? (
+          <Plot height={300}
+            data={icwFams.map((fam) => {
+              const rows = icwW.filter((r) => r.family === fam);
+              return {
+                type: "scatter" as const, mode: "lines" as const, name: fam,
+                x: rows.map((r) => r.date), y: rows.map((r) => r.weight),
+                line: { width: 2 },
+                hovertemplate: "%{x}: %{y:.3f}<extra>" + fam + "</extra>",
+              };
+            })}
+            layout={{
+              yaxis: { title: "family weight", rangemode: "tozero" },
+              legend: { orientation: "h", y: -0.25 },
+              shapes: icwFams.length ? [{ type: "line", xref: "paper", x0: 0, x1: 1,
+                y0: 1 / icwFams.length, y1: 1 / icwFams.length,
+                line: { color: "#888", dash: "dash", width: 1 } }] : [],
+              annotations: icwFams.length ? [{ xref: "paper", x: 0.01, y: 1 / icwFams.length,
+                yanchor: "bottom", text: "equal weight", showarrow: false,
+                font: { size: 11, color: "#888" } }] : [],
+            }} />
+        ) : <Empty />}
+        <p className="muted small">
+          Reading the chart: lines above the dashed reference are families the blend currently trusts more
+          than equal weight; lines pinned at zero are families whose trailing IC is negative (for this
+          history, expect quality and accruals there, and valuation above the line, matching the term
+          structure verdict). Weights move slowly because the window is three years of realized labels.
+        </p>
       </section>
 
       {/* ================= OVERRIDE SCOREBOARD ================= */}

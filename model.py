@@ -202,6 +202,113 @@ def learned_weight_score(
     return df
 
 
+# =============================================================================
+# IC weighted family blend (roadmap 1.6 — the transparent middle ground)
+# =============================================================================
+def ic_weighted_score(
+    panel: pd.DataFrame,
+    horizon_q: int = config.DEFAULT_HORIZON_Q,
+    window: int = config.ICW_TRAILING_WINDOW,
+    shrink: float = config.ICW_SHRINKAGE,
+    min_realized: int = config.ICW_MIN_REALIZED,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Add ``score_icw`` + ``decile_icw``: family scores blended by trailing IC.
+
+    "Let winners carry more" with full discipline (Grinold Kahn ch. 10 on
+    combining signals; shrinkage intuition from James Stein):
+
+    * At each date t, each family's weight is proportional to its trailing
+      mean IC over the last ``window`` REALIZED cross sections, shrunk toward
+      equal weight: w = (1 - shrink)/F + shrink * ic+ / sum(ic+).
+    * ``ic+`` clips negative trailing ICs to zero — a family whose red flags
+      have been pointing the wrong way is muted, never inverted. Learning to
+      INVERT a family is exactly the extra freedom that separates the ridge
+      from this blend, and granting it here would just rebuild the ridge with
+      fewer safeguards.
+    * STRICT point in time: the IC of cross section s enters the trailing
+      window only when its label has fully realized (s + 3*horizon months
+      <= t). Note this embargo is stricter than learned_weight_score, which
+      trains on all dates < t including labels that had not finished
+      realizing at t.
+    * Until ``min_realized`` realized ICs exist, weights stay equal — the
+      blend degrades to the baseline, never guesses.
+
+    Family sub scores (``fam_*__score``) must already exist (run
+    equal_weight_score first). Coverage floors and the peer group
+    re-standardization mirror the baseline so the three scorers differ only
+    in their weights. Returns ``(panel, weights_history)`` where
+    weights_history is tidy [date, family, weight, n_realized].
+    """
+    from validate import ic_series_for_label
+
+    fam_cols = [c for c in panel.columns if c.startswith("fam_") and c.endswith("__score")]
+    if not fam_cols:
+        raise ValueError("No family score columns found; run equal_weight_score first")
+    label = f"fwd_rel_ret_{horizon_q}q"
+    df = panel.copy()
+
+    # Trailing ICs are estimated on the selection universe, like the learned fit.
+    est = (df[df["index_name"] == config.SELECTION_INDEX]
+           if "index_name" in df.columns else df)
+    ic_by_family = {c: ic_series_for_label(est, c, label).set_index("date")["ic"]
+                    for c in fam_cols}
+
+    n_fam = len(fam_cols)
+    equal_w = {c: 1.0 / n_fam for c in fam_cols}
+    dates = sorted(df["date"].unique())
+    embargo = pd.DateOffset(months=3 * int(horizon_q))
+
+    weight_rows = []
+    weights_at: dict[pd.Timestamp, dict[str, float]] = {}
+    for t in dates:
+        cutoff = pd.Timestamp(t) - embargo
+        trailing = {c: s[s.index <= cutoff].tail(window) for c, s in ic_by_family.items()}
+        n_realized = min((len(s) for s in trailing.values()), default=0)
+        if n_realized < min_realized:
+            w = dict(equal_w)
+        else:
+            pos = {c: max(float(s.mean()), 0.0) for c, s in trailing.items()}
+            total = sum(pos.values())
+            if total <= 0:
+                w = dict(equal_w)
+            else:
+                w = {c: (1.0 - shrink) / n_fam + shrink * pos[c] / total for c in fam_cols}
+        weights_at[pd.Timestamp(t)] = w
+        for c in fam_cols:
+            weight_rows.append({
+                "date": pd.Timestamp(t),
+                "family": c[len("fam_"):-len("__score")].replace("_", " ").title(),
+                "weight": w[c],
+                "n_realized": int(n_realized),
+            })
+
+    # Weighted mean over AVAILABLE families, renormalizing weights per name.
+    fam_vals = df[fam_cols]
+    w_frame = pd.DataFrame([weights_at[pd.Timestamp(t)] for t in df["date"]],
+                           index=df.index)[fam_cols]
+    w_masked = w_frame.where(fam_vals.notna())
+    raw = (fam_vals * w_masked).sum(axis=1) / w_masked.sum(axis=1)
+    thin = ((df["n_factors_used"] < config.MIN_FACTORS_FOR_SCORE)
+            | (df["n_families_used"] < config.MIN_FAMILIES_FOR_SCORE))
+    raw[thin] = np.nan
+    df["score_icw_raw"] = raw
+
+    def _restd(s: pd.Series) -> pd.Series:
+        mu, sd = s.mean(), s.std(ddof=0)
+        return (s - mu) / sd if (sd and np.isfinite(sd) and sd > 0) else s * 0.0
+
+    df["score_icw"] = (df.groupby(_group_keys(df), group_keys=False)["score_icw_raw"]
+                         .apply(_restd))
+    df["decile_icw"] = assign_sector_deciles(df, "score_icw")
+
+    weights_history = pd.DataFrame(weight_rows)
+    n_active = int((weights_history.groupby("date")["weight"].std() > 1e-12).sum())
+    logger.info("IC weighted blend (h=%dq, window=%d, shrink=%.2f): %d/%d dates use "
+                "IC weights (rest equal weight until %d realized ICs exist)",
+                horizon_q, window, shrink, n_active, len(dates), min_realized)
+    return df, weights_history
+
+
 def default_score_column(panel: pd.DataFrame) -> str:
     """Which score the app treats as primary. Baseline unless learned is enabled
     AND present. validate.py is what justifies flipping config.USE_LEARNED_WEIGHTS."""

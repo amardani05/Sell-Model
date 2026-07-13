@@ -11,8 +11,23 @@ under a capped Volatility family; Amihud into the torpedo only — as a *return*
 predictor it points the wrong way for a sell model). Per Amar: 2.6 delisting-reason
 curation deprioritized, 2.7 (13F) skipped. Remaining from section 2: FINRA short
 interest history (2.3), insider Form 4 (2.4), price-based SUE (2.5), ETF-archive PIT
-membership (2.6-lite). Tier 2 and the vendor ladder remain as written; 1.6
-(IC-weighted blending) is the next Tier 0 item.
+membership (2.6-lite). Tier 2 and the vendor ladder remain as written; Tier 0
+is now COMPLETE (1.1 through 1.6 all built).
+
+**1.6 BUILT (2026-07-13):** walk-forward IC-weighted family blending
+(`model.ic_weighted_score`, `score_icw`): weights ∝ trailing 36-observation
+mean family IC on REALIZED labels only (a stricter embargo than the ridge
+applies — see below), negative ICs clipped to zero (families are muted, never
+inverted), shrunk 50% toward equal weight; all knobs pre-registered in
+config.py, not tuned. VERDICT on 2011–2026: the transparent blend is
+statistically indistinguishable from the equal-weight baseline (paired
+t = +0.21) while the ridge keeps a t = 1.90 edge over it. Diagnosis matches
+the 1.5 term structure: the exploitable structure in this sample is the SIGN
+INVERSION of quality/accruals, and a blend that can only mute (not invert)
+captures none of it, while half its weight stays structurally spread over
+negative-IC families. The interpretable middle ground exists but buys
+essentially nothing here; reported as a third comparator on the Validation
+tab (weights-over-time chart), never wired into default selection.
 
 **1.5 BUILT (2026-07-13):** per-family IC measured at 1M/1Q/2Q/4Q
 (`validate.horizon_term_structure`, diagnostic labels in `feature_engine`,

@@ -136,6 +136,12 @@ export interface HorizonICRow {
   ir: number | null; n_periods: number;
 }
 
+export interface ICWWeightRow { date: string; family: string; weight: number; n_realized: number; }
+export interface ICWPaired {
+  icw_vs_equal_weight: Promotion | null;
+  learned_vs_icw: Promotion | null;
+}
+
 export interface Validation {
   ic: Record<string, ICBlock>;
   deciles: Record<string, DecileBlock>;
@@ -149,6 +155,9 @@ export interface Validation {
   family_ic_rolling: Record<string, string | number | null>[];
   stress_windows: StressWindowRow[];
   horizon_term_structure: HorizonICRow[];
+  icw_weights?: ICWWeightRow[];
+  icw_paired?: ICWPaired | null;
+  icw_params?: { window: number; shrinkage: number; min_realized: number };
   label_winsor_pct: number;
   era_min_avg_factors: number;
 }

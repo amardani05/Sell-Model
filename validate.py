@@ -542,9 +542,10 @@ def factor_ic_table(panel: pd.DataFrame, horizon_q: int) -> pd.DataFrame:
 # Baseline vs learned, head to head (OOS)
 # =============================================================================
 def compare_models(panel: pd.DataFrame, horizon_q: int) -> pd.DataFrame:
-    """Side by side OOS IC for equal weight vs learned weight (if present)."""
+    """Side by side OOS IC for equal weight vs IC weighted blend vs learned."""
     rows = []
-    for col, name in [("score_ew", "equal_weight"), ("score_ml", "learned_weight")]:
+    for col, name in [("score_ew", "equal_weight"), ("score_icw", "ic_weighted"),
+                      ("score_ml", "learned_weight")]:
         if col not in panel.columns or not panel[col].notna().any():
             continue
         s = summarize_ic(panel, col, horizon_q)

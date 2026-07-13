@@ -115,7 +115,9 @@ def export_validation(ic_summaries: dict, decile_summaries: dict,
                       yearly_ic: pd.DataFrame,
                       family_roll: pd.DataFrame | None = None,
                       stress: pd.DataFrame | None = None,
-                      term_structure: pd.DataFrame | None = None) -> None:
+                      term_structure: pd.DataFrame | None = None,
+                      icw_weights: pd.DataFrame | None = None,
+                      icw_paired: dict | None = None) -> None:
     """ic_summaries / decile_summaries keyed by horizon_q -> validate dataclasses."""
     ic_payload = {}
     for h, s in ic_summaries.items():
@@ -145,6 +147,11 @@ def export_validation(ic_summaries: dict, decile_summaries: dict,
         "family_ic_rolling": _records(family_roll) if family_roll is not None else [],
         "stress_windows": _records(stress) if stress is not None else [],
         "horizon_term_structure": _records(term_structure) if term_structure is not None else [],
+        "icw_weights": _records(icw_weights) if icw_weights is not None else [],
+        "icw_paired": icw_paired,
+        "icw_params": {"window": config.ICW_TRAILING_WINDOW,
+                       "shrinkage": config.ICW_SHRINKAGE,
+                       "min_realized": config.ICW_MIN_REALIZED},
         "label_winsor_pct": config.LABEL_WINSOR_PCT,
         "era_min_avg_factors": config.ERA_MIN_AVG_FACTORS,
     }, "validation")
@@ -384,7 +391,7 @@ _SECTOR_COLORS = {
 def export_all(*, panel, latest, score_col, decile_col, factor_ic, horizon_q,
                ic_summaries, decile_summaries, calibration, comparison, promotion,
                event_study, eras, era_ic, yearly_ic, family_roll=None, stress=None,
-               term_structure=None,
+               term_structure=None, icw_weights=None, icw_paired=None,
                backtests, seg_year, seg_regime, mc, exclusions,
                ov_active=None, ov_scoreboard=None, meta_kwargs=None) -> None:
     _ensure()
@@ -407,7 +414,8 @@ def export_all(*, panel, latest, score_col, decile_col, factor_ic, horizon_q,
     export_validation(ic_summaries, decile_summaries, calibration, comparison,
                       promotion, event_study, eras, era_ic, yearly_ic,
                       family_roll=family_roll, stress=stress,
-                      term_structure=term_structure)
+                      term_structure=term_structure,
+                      icw_weights=icw_weights, icw_paired=icw_paired)
     export_backtest(backtests, seg_year, seg_regime)
     export_mc(mc)
     export_exclusions(exclusions)

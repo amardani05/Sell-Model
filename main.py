@@ -138,7 +138,7 @@ def run(args) -> None:
     horizon = args.horizon_q
 
     from feature_engine import neutralize_factors, quarter_end_subset
-    from model import equal_weight_score, learned_weight_score
+    from model import equal_weight_score, learned_weight_score, ic_weighted_score
     from validate import (summarize_ic, decile_analysis, calibration_fm,
                           decile_event_study, coverage_eras, ic_summary_by_era,
                           ic_by_year, paired_ic_test, factor_ic_table, compare_models,
@@ -155,7 +155,7 @@ def run(args) -> None:
     panel, prices, exclusions, bench_px = (build_synth_panel(args) if args.synthetic
                                            else build_real_panel(args))
     if panel.empty:
-        raise SystemExit("Panel is empty — check data sources / universe.")
+        raise SystemExit("Panel is empty: check data sources / universe.")
 
     if args.since:
         panel = panel[panel["date"] >= pd.Timestamp(args.since)].copy()
@@ -165,6 +165,8 @@ def run(args) -> None:
     logger.info("=== Scoring: sector neutralize -> equal weight composite ===")
     panel = neutralize_factors(panel)
     panel = equal_weight_score(panel)
+    logger.info("=== IC weighted family blend (walk forward, realized labels only) ===")
+    panel, icw_weights = ic_weighted_score(panel, horizon_q=horizon)
     if config.USE_LEARNED_WEIGHTS:
         logger.info("=== Learned weight model (walk forward, OOS) ===")
         panel = learned_weight_score(panel, horizon_q=horizon)
@@ -188,6 +190,18 @@ def run(args) -> None:
             logger.info("Learned model NOT promoted (paired IC diff %+.4f, t=%+.2f < %.1f): baseline stays default",
                         promotion["mean_diff"], promotion["t_stat"], config.PROMOTION_MIN_T)
     decile_col = "decile_ml" if score_col == "score_ml" else "decile_ew"
+
+    # Roadmap 1.6 diagnostics: where does the transparent IC weighted blend
+    # sit between the baseline and the ridge? REPORTING ONLY — the default
+    # score decision above stays learned vs baseline until the PM changes it.
+    icw_paired = None
+    if "score_icw" in panel.columns and panel["score_icw"].notna().any():
+        icw_paired = {
+            "icw_vs_equal_weight": paired_ic_test(sel_for_choice, "score_icw", "score_ew", horizon),
+            "learned_vs_icw": (paired_ic_test(sel_for_choice, "score_ml", "score_icw", horizon)
+                               if "score_ml" in panel.columns and panel["score_ml"].notna().any()
+                               else None),
+        }
 
     # --- torpedo screener (absolute, whole universe risk view) ---
     logger.info("=== Torpedo screener (absolute whole universe risk) ===")
@@ -261,6 +275,7 @@ def run(args) -> None:
             calibration=calibration, comparison=comparison, promotion=promotion,
             event_study=event_study, eras=eras, era_ic=era_ic, yearly_ic=yearly_ic,
             family_roll=family_roll, stress=stress, term_structure=term_structure,
+            icw_weights=icw_weights, icw_paired=icw_paired,
             backtests={"hold_all": hold_all, "avoid_worst": avoid, "benchmark": bench},
             seg_year=seg_year, seg_regime=seg_regime, mc=mc, exclusions=exclusions,
             ov_active=ov_active, ov_scoreboard=ov_scoreboard,
@@ -288,7 +303,7 @@ def run(args) -> None:
     _print_summary(panel, score_col, decile_col, latest, latest_date, ic_summaries,
                    decile_summaries, comparison, era_ic, hold_all, avoid, bench, mc,
                    exclusions, diag, horizon, time.time() - t0,
-                   term_structure=term_structure)
+                   term_structure=term_structure, icw_paired=icw_paired)
 
 
 # =============================================================================
@@ -296,9 +311,10 @@ def run(args) -> None:
 # =============================================================================
 def _print_summary(panel, score_col, decile_col, latest, latest_date, ic_summaries,
                    decile_summaries, comparison, era_ic, hold_all, avoid, bench, mc,
-                   exclusions, diag, horizon, secs, term_structure=None) -> None:
+                   exclusions, diag, horizon, secs, term_structure=None,
+                   icw_paired=None) -> None:
     line = "=" * 76
-    print(f"\n{line}\nRELATIVE SELL MODEL — sector neutral relative underperformance ranking")
+    print(f"\n{line}\nRELATIVE SELL MODEL: sector neutral relative underperformance ranking")
     print(f"{line}")
     print(f"Universe: {latest['ticker'].nunique()} names, {latest['gics_sector'].nunique()} sectors "
           f"| {panel['date'].nunique()} cross sections ({config.REBALANCE_FREQ}) | default score = {score_col}")
@@ -322,6 +338,13 @@ def _print_summary(panel, score_col, decile_col, latest, latest_date, ic_summari
         print("  model comparison (OOS IC):")
         for _, r in comparison.iterrows():
             print(f"    {r['model']:<16} IC={r['mean_ic']:+.4f} t={r['t_stat']:+.2f} IR={r['ir']:+.2f}")
+    if icw_paired:
+        a = icw_paired.get("icw_vs_equal_weight")
+        b = icw_paired.get("learned_vs_icw")
+        if a:
+            print(f"  paired: ic_weighted vs equal_weight  diff={a['mean_diff']:+.4f} t={a['t_stat']:+.2f}")
+        if b:
+            print(f"  paired: learned vs ic_weighted       diff={b['mean_diff']:+.4f} t={b['t_stat']:+.2f}")
 
     if term_structure is not None and not term_structure.empty:
         present = set(term_structure["horizon"])
@@ -341,7 +364,7 @@ def _print_summary(panel, score_col, decile_col, latest, latest_date, ic_summari
                     cells += " " * 16
             print(f"  {name:<26}{cells}")
 
-    print(f"\nBACKTEST  (quarterly rebalance, equal weight; screen judged vs hold-all, IJR = context)")
+    print(f"\nBACKTEST  (quarterly rebalance, equal weight; screen judged vs hold all, IJR = context)")
     for res in (hold_all, avoid, bench):
         m = res.metrics
         if not m:

@@ -262,6 +262,22 @@ LEARNED_MODEL: str = "ridge"          # "ridge" | "logistic" | "gbm"
 WALK_FORWARD_MIN_TRAIN_PERIODS: int = 6   # cross sections before first OOS fit
 RIDGE_ALPHA: float = 10.0
 
+# Roadmap 1.6: walk forward IC weighted family blending — the transparent
+# middle ground between equal family weights and the ridge. Family weights at
+# each date are proportional to the family's TRAILING mean IC (negative
+# trailing ICs clip to zero: a broken family is silenced, never inverted —
+# inversion capture is deliberately left to the learned model), shrunk hard
+# toward equal weight (James Stein intuition: family IC estimates are noisy,
+# so only half the weight follows the evidence). STRICTLY point in time: the
+# IC of cross section s enters the trailing window only once its forward
+# label has fully realized (s + 3 x horizon months <= t), a stricter embargo
+# than the learned model applies. These values are pre registered here, not
+# tuned: changing them after seeing results is data snooping and must be
+# disclosed like the promotion bar was.
+ICW_TRAILING_WINDOW: int = 36    # realized IC observations per family (3y monthly)
+ICW_SHRINKAGE: float = 0.5       # 0 = pure equal weight, 1 = pure IC proportional
+ICW_MIN_REALIZED: int = 12       # realized ICs required before leaving equal weight
+
 # =============================================================================
 # Torpedo screener (integrated absolute risk view)
 # =============================================================================
