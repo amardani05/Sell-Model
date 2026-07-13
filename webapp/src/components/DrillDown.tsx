@@ -93,7 +93,7 @@ function riskParagraph(ticker: string, d: DrilldownName, bundle: Bundle): string
       baseRate = ` Historically, names entering the worst decile went on to lag their sector median by a cumulative ${(last.cum_mean * 100).toFixed(1)}% over the following ${ev!.length} quarters (n=${ev![0].n}).`;
     }
   } else {
-    baseRate = ` [Base rates omitted: the full factor era spans only ${era?.n_periods ?? 0} quarter(s) — not yet enough history to cite honestly.]`;
+    baseRate = ` [Base rates omitted: the full factor era spans only ${era?.n_periods ?? 0} quarter(s), not yet enough history to cite honestly.]`;
   }
 
   return `${ticker} screens in risk decile ${d.decile ?? "—"} of 10 versus ${d.sector} peers on the Relative Sell Model (${d.n_factors_used}/${total} factors populated). Primary quantitative red flags: ${redTxt}.${greenTxt}${torp}${baseRate}`;
@@ -157,7 +157,7 @@ function DrillDownPanel({ ticker, d, bundle, onClose }: {
           {bundle.meta.default_score === "score_ml" ? (
             <>The score is the <Term id="learnedweight">learned weight</Term> model's output: a
             <Term id="walkforward"> walk forward</Term> fit (trained only on data before each date) weighs the
-            direction aligned peer neutral <Term id="zscore">z scores</Term> below — including learning which
+            direction aligned peer neutral <Term id="zscore">z scores</Term> below, including learning which
             families to trust and which to fade. Bars show each factor's raw red flag reading
             ({d.n_factors_used} populated); red pushes toward the sell sleeve <em>if the factor's documented
             direction holds</em>, and the fitted weights decide how much each one actually counts.</>
@@ -219,7 +219,7 @@ function DrillDownPanel({ ticker, d, bundle, onClose }: {
 
         {missing.length > 0 && (
           <p className="muted small">
-            Not populated ({missing.length}): {missing.map((f) => factorLabel(f)).join(", ")} — dropped from this
+            Not populated ({missing.length}): {missing.map((f) => factorLabel(f)).join(", ")}. These are dropped from this
             name's average, never imputed. {d.fund_as_of ? `Fundamentals as of ${d.fund_as_of} (statement date + reporting lag).` : "No fundamental statement available for this name."}
           </p>
         )}
@@ -282,7 +282,7 @@ function AnalystView({ ticker, d, bundle }: { ticker: string; d: DrilldownName; 
         <div key={i} className="ov-item">
           <span className={"flag-chip " + (o.direction === "less_risky" ? "ov-less" : "ov-more")}>
             {o.direction === "less_risky" ? "⚑ LESS RISKY" : "⚑ MORE RISKY"}</span>
-          <span className="small"><b>{o.reason_code}</b>{o.factor ? <> · disputes <code>{o.factor}</code></> : null} — {o.note}</span>
+          <span className="small"><b>{o.reason_code}</b>{o.factor ? <> · disputes <code>{o.factor}</code></> : null}: {o.note}</span>
           <span className="muted small"> ({o.analyst}, filed {o.date}, expires {o.expires})</span>
         </div>
       )) : <p className="muted small">No active overrides. The model's view stands unchallenged for this name.</p>}
@@ -290,7 +290,7 @@ function AnalystView({ ticker, d, bundle }: { ticker: string; d: DrilldownName; 
       {open && (
         <div className="ov-form">
           <p className="muted small">
-            Overrides are annotations — the score never changes. They expire (default two quarters) and are
+            Overrides are annotations: the score never changes. They expire (default two quarters) and are
             scored on the Validation tab: did the name behave your way or the model's? State what the model
             <em> cannot see</em>, not that you disagree with what it sees.
           </p>
@@ -323,7 +323,7 @@ function AnalystView({ ticker, d, bundle }: { ticker: string; d: DrilldownName; 
             <button className="dd-copy" disabled={!valid} onClick={copyRow}>{copied ? "Copied ✓" : "Copy CSV row"}</button>
           </div>
           <p className="muted small">Append the row to <code>data/overrides.csv</code> and rerun
-            <code> python main.py</code> — it will appear here and enter the scoreboard.</p>
+            <code> python main.py</code>; it will appear here and enter the scoreboard.</p>
         </div>
       )}
     </div>

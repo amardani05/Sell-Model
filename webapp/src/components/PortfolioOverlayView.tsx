@@ -65,9 +65,9 @@ export function PortfolioOverlayView({ meta, scores, drilldown, transitions, ove
       return `| ${r.ticker} | ${r.gics_sector} | ${r.decile ?? "—"} | ${dq == null ? "—" : dq > 0 ? `+${dq}` : dq} | ${flags} | ${r.torpedo_tier ?? "—"} | ${badges} |`;
     });
     const md = [
-      `# Holdings risk review — ${drilldown.as_of} (Relative Sell Model)`,
+      `# Holdings risk review: ${drilldown.as_of} (Relative Sell Model)`,
       ``,
-      `${held.length} matched · ${inWorst.length} in decile 10 · ${newlyFlagged.length} newly flagged (9–10) · ${doubles.length} double flagged · mean decile ${meanDecile.toFixed(1)}/10`,
+      `${held.length} matched · ${inWorst.length} in decile 10 · ${newlyFlagged.length} newly flagged (9 or 10) · ${doubles.length} double flagged · mean decile ${meanDecile.toFixed(1)}/10`,
       ``,
       `| Ticker | Sector | Decile | QoQ Δ | Top quantitative flags | Torpedo | Badges |`,
       `|---|---|---|---|---|---|---|`,
@@ -84,7 +84,7 @@ export function PortfolioOverlayView({ meta, scores, drilldown, transitions, ove
   return (
     <div className="grid">
       <section className="card span-12">
-        <h2>Portfolio overlay — where do my holdings sit on the sell model?</h2>
+        <h2>Portfolio overlay: where do my holdings sit on the sell model?</h2>
         <p className="muted">
           Paste your long only sleeve (tickers, any separator). Each holding is matched to its
           <Term id="sectorneutral"> sector neutral</Term> <Term id="decile">decile</Term> and
@@ -93,19 +93,19 @@ export function PortfolioOverlayView({ meta, scores, drilldown, transitions, ove
           section draft.</strong>
         </p>
         <div className="help-note">
-          <strong>How IMA should read this.</strong> A holding in decile 9–10 is a prompt to underwrite the thesis again, not an
+          <strong>How IMA should read this.</strong> A holding in decile 9 or 10 is a prompt to underwrite the thesis again, not an
           automatic sell: the model expects it to lag its sector peers over the next {meta.horizon_q} quarter(s),
           and the burden shifts to the thesis to explain why the flags are wrong or already priced. The
-          <em> QoQ Δ</em> column shows decile movement since last quarter — deterioration is often more
+          <em> QoQ Δ</em> column shows decile movement since last quarter; deterioration is often more
           informative than level. <em>Double flag</em> means the name is both a sector relative sell (decile ≥ 9)
-          and an Elevated absolute risk on the <Term id="torpedo">torpedo screener</Term> — the strongest prompt
+          and an Elevated absolute risk on the <Term id="torpedo">torpedo screener</Term>, the strongest prompt
           this platform produces.
         </div>
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} spellCheck={false} />
         <div className="overlay-summary">
           <span><strong>{held.length}</strong> matched</span>
           <span className={inWorst.length ? "neg" : "pos"}><strong>{inWorst.length}</strong> in worst decile</span>
-          <span className={newlyFlagged.length ? "neg" : ""}><strong>{newlyFlagged.length}</strong> newly flagged (9–10)</span>
+          <span className={newlyFlagged.length ? "neg" : ""}><strong>{newlyFlagged.length}</strong> newly flagged (9 or 10)</span>
           <span className={doubles.length ? "neg" : ""}><strong>{doubles.length}</strong> double flagged</span>
           <span>mean decile <strong>{meanDecile.toFixed(1)}</strong> / {n}</span>
           {missing.length > 0 && <span className="muted">not in universe: {missing.join(", ")}</span>}
@@ -149,14 +149,14 @@ export function PortfolioOverlayView({ meta, scores, drilldown, transitions, ove
                 {isDouble(r) && <span className="flag-chip double">DOUBLE</span>}
                 {ovFor(r.ticker).map((o, i) => (
                   <span key={i} className={"flag-chip " + (o.direction === "less_risky" ? "ov-less" : "ov-more")}
-                    title={`Analyst override (${o.analyst}): ${o.direction} — ${o.reason_code}. ${o.note}`}>⚑</span>
+                    title={`Analyst override (${o.analyst}): ${o.direction} · ${o.reason_code}. ${o.note}`}>⚑</span>
                 ))}
               </span>
             ) },
           ]}
         />
         <p className="muted small">
-          NEW = entered decile 9–10 this quarter (was better last quarter). DOUBLE = decile ≥ 9 <em>and</em>
+          NEW = entered decile 9 or 10 this quarter (was better last quarter). DOUBLE = decile ≥ 9 <em>and</em>
           {" "}Elevated torpedo tier. Click a ticker for its factor waterfall and risks section draft.
         </p>
       </section>
@@ -164,8 +164,8 @@ export function PortfolioOverlayView({ meta, scores, drilldown, transitions, ove
       <section className="card span-6">
         <h3>Universe flag churn this quarter</h3>
         <p className="muted small">
-          Names entering deciles 9–10 between {transitions?.prev_date ?? "—"} and {transitions?.latest_date ?? "—"}
-          {" "}across the whole universe — the screen's fresh output, worth a first look before they become
+          Names entering deciles 9 or 10 between {transitions?.prev_date ?? "—"} and {transitions?.latest_date ?? "—"}
+          {" "}across the whole universe: the screen's fresh output, worth a first look before they become
           consensus problems.
         </p>
         {transitions?.new_flagged?.length ? (
@@ -188,11 +188,11 @@ export function PortfolioOverlayView({ meta, scores, drilldown, transitions, ove
       </section>
 
       <section className="card span-6">
-        <h3><Term id="transitionmatrix">Decile transition matrix</Term> — how sticky is a flag?</h3>
+        <h3><Term id="transitionmatrix">Decile transition matrix</Term>: how sticky is a flag?</h3>
         <p className="muted small">
           Row = decile this quarter, column = decile next quarter, cell = historical probability
-          ({transitions?.n_date_pairs ?? 0} quarter pairs). Read row 10: the mass staying in 9–10 is the
-          persistence of the sell flag; mass jumping back to 1–5 is how often a flag melts on its own.
+          ({transitions?.n_date_pairs ?? 0} quarter pairs). Read row 10: the mass staying in 9 or 10 is the
+          persistence of the sell flag; mass jumping back to 1 to 5 is how often a flag melts on its own.
         </p>
         {matrix.length ? (
           <div className="table-wrap">

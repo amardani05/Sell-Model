@@ -72,7 +72,7 @@ export function Overview({ meta, scores, validation, exclusions }: Bundle) {
           {priceEra && <>The <em>price only era</em> ({priceEra.n_periods} quarters scored by momentum + reversal
           alone) has IC {fmtSigned(priceEra.mean_ic)} (t = {fmt(priceEra.t_stat)}). </>}
           {fullEra && <>The <em>full factor era</em> (all {meta.n_factors} factors) spans
-          {" "}<strong>{fullEra.n_periods} scored quarter(s)</strong>{fullEra.n_periods < 8 && <> — far too few to
+          {" "}<strong>{fullEra.n_periods} scored quarter(s)</strong>{fullEra.n_periods < 8 && <>, far too few to
           judge the composite; treat the history above as a momentum/reversal test until deeper fundamentals are
           wired in</>}. </>}
           Full split on the Validation tab.
@@ -111,11 +111,11 @@ export function Overview({ meta, scores, validation, exclusions }: Bundle) {
 
       <section className="card span-12">
         <div className="row-between">
-          <h3>Top sell candidates — highest <Term id="relativereturn">relative risk</Term> score (latest cross section)</h3>
+          <h3>Top sell candidates: highest <Term id="relativereturn">relative risk</Term> score (latest cross section)</h3>
           <UniverseToggle value={universe} onChange={setUniverse} counts={meta.index_counts} />
         </div>
         <p className="muted small">
-          Defaults to the <Term id="selectionuniverse">selection universe</Term> (S&amp;P 600) — the names IMA
+          Defaults to the <Term id="selectionuniverse">selection universe</Term> (S&amp;P 600), the names IMA
           actually picks from. S&amp;P 400 graduates are scored against 400 peers for monitoring only.
         </p>
         <DataTable<ScoreRow>

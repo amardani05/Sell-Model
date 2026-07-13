@@ -15,19 +15,19 @@ export const FACTOR_META: Record<string, FactorMeta> = {
   pe_ratio: {
     label: "P/E (trailing)", family: "Valuation",
     formula: "market cap ÷ trailing 12m net income (only when income > 0)",
-    redFlag: "High P/E vs sector peers — priced richly",
-    anomaly: "Value premium (Fama–French HML)",
+    redFlag: "High P/E vs sector peers: priced richly",
+    anomaly: "Value premium (Fama French HML)",
   },
   ev_to_ebitda: {
     label: "EV / EBITDA", family: "Valuation",
     formula: "(market cap + total debt − cash) ÷ trailing 12m EBITDA",
-    redFlag: "High EV/EBITDA vs sector peers — priced richly",
+    redFlag: "High EV/EBITDA vs sector peers: priced richly",
     anomaly: "Value premium (enterprise value form)",
   },
   ps_ratio: {
     label: "Price / Sales", family: "Valuation",
     formula: "market cap ÷ trailing 12m revenue",
-    redFlag: "High P/S vs sector peers — priced richly",
+    redFlag: "High P/S vs sector peers: priced richly",
     anomaly: "Value premium (works when earnings are noisy)",
   },
   fcf_yield: {
@@ -39,19 +39,19 @@ export const FACTOR_META: Record<string, FactorMeta> = {
   mom_12_1: {
     label: "12−1 momentum", family: "Momentum",
     formula: "total return from 12 months ago to 1 month ago (skips the last month)",
-    redFlag: "LOW momentum vs sector peers — a persistent laggard",
-    anomaly: "Jegadeesh–Titman momentum (losers keep losing)",
+    redFlag: "LOW momentum vs sector peers: a persistent laggard",
+    anomaly: "Jegadeesh Titman momentum (losers keep losing)",
   },
   reversal_1m: {
     label: "1m reversal", family: "Momentum",
     formula: "total return over the most recent ~21 trading days",
-    redFlag: "HIGH last month return — recent pops tend to give some back",
+    redFlag: "HIGH last month return: recent pops tend to give some back",
     anomaly: "Short term reversal effect",
   },
   high_52w: {
     label: "52 week high proximity", family: "Momentum",
     formula: "price ÷ trailing 252 day maximum price",
-    redFlag: "FAR below the 52 week high — beaten down names keep lagging",
+    redFlag: "FAR below the 52 week high: beaten down names keep lagging",
     anomaly: "52 week high effect (George & Hwang 2004)",
   },
   ivol_63d: {
@@ -63,7 +63,7 @@ export const FACTOR_META: Record<string, FactorMeta> = {
   max_ret_1m: {
     label: "MAX (lottery)", family: "Volatility",
     formula: "largest single day return over the trailing ~21 days",
-    redFlag: "HIGH recent single day pop — lottery like names disappoint",
+    redFlag: "HIGH recent single day pop: lottery like names disappoint",
     anomaly: "MAX effect (Bali, Cakici, Whitelaw 2011)",
   },
   beta_252d: {
@@ -111,19 +111,19 @@ export const FACTOR_META: Record<string, FactorMeta> = {
   asset_growth_yoy: {
     label: "Asset growth (YoY)", family: "Investment",
     formula: "total assets ÷ total assets four quarters ago − 1",
-    redFlag: "HIGH asset growth — aggressive expansion / empire building",
-    anomaly: "Asset growth anomaly (Cooper–Gulen–Schill)",
+    redFlag: "HIGH asset growth: aggressive expansion / empire building",
+    anomaly: "Asset growth anomaly (Cooper Gulen Schill)",
   },
   net_issuance_yoy: {
     label: "Net share issuance (YoY)", family: "Investment",
     formula: "shares outstanding ÷ shares four quarters ago − 1",
-    redFlag: "HIGH issuance — dilution of existing holders",
-    anomaly: "Net issuance anomaly (Daniel–Titman, Pontiff–Woodgate)",
+    redFlag: "HIGH issuance: dilution of existing holders",
+    anomaly: "Net issuance anomaly (Daniel Titman, Pontiff Woodgate)",
   },
   accruals_ocf_ni: {
     label: "Accruals (OCF/NI)", family: "Earnings Quality",
     formula: "trailing 12m operating cash flow ÷ trailing 12m net income",
-    redFlag: "LOW OCF/NI — earnings not backed by cash (high accruals)",
+    redFlag: "LOW OCF/NI: earnings not backed by cash (high accruals)",
     anomaly: "Sloan (1996) accruals anomaly",
   },
   est_revision_3m: {

@@ -20,7 +20,7 @@ export function FactorICView({ factorIC }: Bundle) {
         {thin > 0 && (
           <p className="callout warn small">
             ⚠ {thin} of {rows.length} factors have fewer than 8 scored quarters (yfinance fundamentals only reach
-            back ~4–5 quarters), so their ICs here are anecdotes, not evidence — check the Periods column before
+            back ~4 to 5 quarters), so their ICs here are anecdotes, not evidence. Check the Periods column before
             reading anything into a bar. The price factors (momentum, reversal) carry the long history.
           </p>
         )}

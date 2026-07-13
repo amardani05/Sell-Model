@@ -34,7 +34,7 @@ export function SectorDecilesView({ meta, scores, sectorDeciles }: Bundle) {
         </div>
         <p className="muted">
           <Term id="decile">Deciles</Term> are formed <strong>within each <Term id="gics">GICS</Term> sector and
-          index at each date</strong> — S&amp;P 600 names against 600 peers only — so every sector contributes
+          index at each date</strong> (S&amp;P 600 names against 600 peers only), so every sector contributes
           its own worst names and the model never just flags whole cheap or expensive sectors. Decile 1 = best
           expected relative return, decile {n} = the sell sleeve. Counts are the latest cross section for the
           <Term id="selectionuniverse"> selection universe</Term> shown in the toggle.

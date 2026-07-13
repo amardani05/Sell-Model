@@ -39,8 +39,8 @@ logger = logging.getLogger(__name__)
 TIERS: list[tuple[str, str]] = [
     ("full", "Full universe (no screen)"),
     ("ex10", "Exclude worst decile (10)"),
-    ("ex9_10", "Exclude deciles 9-10"),
-    ("top_half", "Top half only (deciles 1-5)"),
+    ("ex9_10", "Exclude deciles 9 and 10"),
+    ("top_half", "Top half only (deciles 1 to 5)"),
 ]
 
 

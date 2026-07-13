@@ -145,15 +145,15 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   },
   horizon: {
     label: "forward horizon",
-    def: "How far ahead the label looks. 1Q judges every score by the stock's sector relative return over the NEXT quarter; 2Q over the next two quarters. The toggle recomputes the page at the other horizon — slower signals like value and quality often need the longer window to pay off.",
+    def: "How far ahead the label looks. 1Q judges every score by the stock's sector relative return over the NEXT quarter; 2Q over the next two quarters. The toggle recomputes the page at the other horizon. Slower signals like value and quality often need the longer window to pay off.",
   },
   familybalanced: {
     label: "family balanced",
-    def: "Factors are averaged within their family first (valuation, momentum, volatility, quality, investment, earnings quality), then the family scores are averaged. Four overlapping valuation ratios cast one vote, not four — and adding more price factors can never let price signals swamp the fundamentals.",
+    def: "Factors are averaged within their family first (valuation, momentum, volatility, quality, investment, earnings quality), then the family scores are averaged. Four overlapping valuation ratios cast one vote, not four, and adding more price factors can never let price signals swamp the fundamentals.",
   },
   selectionuniverse: {
     label: "selection universe",
-    def: "The S&P 600 — the index IMA actually picks from. S&P 400 graduates stay scored for monitoring, but they are ranked against 400 peers only and every headline statistic (IC, calibration, backtest, simulation) is computed on the 600 alone.",
+    def: "The S&P 600, the index IMA actually picks from. S&P 400 graduates stay scored for monitoring, but they are ranked against 400 peers only and every headline statistic (IC, calibration, backtest, simulation) is computed on the 600 alone.",
   },
   overlapping: {
     label: "overlapping observations",

@@ -51,7 +51,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
       {/* ================= VALIDATION HEADER ================= */}
       <section className="card span-12">
         <div className="row-between">
-          <h2>Validation — does the score rank forward relative returns?</h2>
+          <h2>Validation: does the score rank forward relative returns?</h2>
           <span className="seg-labeled">
             <span className="muted small"><Term id="horizon">Forward horizon</Term></span>
             <span className="seg">
@@ -65,7 +65,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
           Every statistic on this page describes the <Term id="selectionuniverse">selection universe</Term>
           {" "}({meta.selection_index ?? "S&P 600"}) on a <strong>monthly scoring grid</strong>
           {" "}({meta.n_cross_sections} <Term id="overlapping">overlapping cross sections</Term>
-          {meta.n_quarterly_cross_sections ? <> — traded sleeves step on the {meta.n_quarterly_cross_sections} quarter ends</> : null}).
+          {meta.n_quarterly_cross_sections ? <>; traded sleeves step on the {meta.n_quarterly_cross_sections} quarter ends</> : null}).
           Sign convention: <Term id="ic">IC</Term> = minus the <Term id="spearman">Spearman correlation</Term>
           between the score and the forward relative return, so <strong>positive means skill</strong>. The mean
           IC is averaged <Term id="famamacbeth">Fama MacBeth</Term> style with a <Term id="neweywest">Newey
@@ -83,7 +83,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
         </div>
         {eraIC.length > 0 && (
           <>
-            <h3 style={{ marginTop: 6 }}><Term id="coveragera">Coverage eras</Term> — which model does this history actually test?</h3>
+            <h3 style={{ marginTop: 6 }}><Term id="coveragera">Coverage eras</Term>: which model does this history actually test?</h3>
             <p className="muted small">
               Cross sections before XBRL fundamentals become available (~2009 to 2012 via SEC EDGAR) are scored by
               the price factors alone. Any headline number that pools the eras is answering a mixed question;
@@ -153,12 +153,12 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
 
       {/* ================= WHAT BROKE, AND WHEN ================= */}
       <section className="card span-7">
-        <h3>What broke, and when — rolling one year IC per factor family</h3>
+        <h3>What broke, and when: rolling one year IC per factor family</h3>
         <p className="muted small">
           The composite can net to zero while its families are strongly nonzero in <em>opposite</em> directions.
           Each line is one family's sub score used alone, rolling twelve month mean IC: above zero = that
           family's red flags predicted underperformance in that regime; below zero = they pointed the wrong way.
-          This is the diagnostic behind the headline — which ingredient failed, and in which market.
+          This is the diagnostic behind the headline: which ingredient failed, and in which market.
         </p>
         {validation.family_ic_rolling?.length ? (
           <Plot height={340}
@@ -176,7 +176,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
       </section>
 
       <section className="card span-5">
-        <h3>Stress windows — named disasters, judged separately</h3>
+        <h3>Stress windows: named disasters, judged separately</h3>
         <p className="muted small">
           A sell model that only works in calm tape is a different product. Rows are flags raised
           {" "}<em>during</em> each episode, judged on their forward window. COVID is two rows on purpose: the
@@ -207,13 +207,13 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
 
       {/* ================= HORIZON TERM STRUCTURE ================= */}
       <section className="card span-7">
-        <h3>IC term structure — how fast does each family pay?</h3>
+        <h3>IC term structure: how fast does each family pay?</h3>
         <p className="muted small">
           Each line is one family's sub score tested on its own against forward relative returns at four label
           horizons (1M, 1Q, 2Q, 4Q). Documented anomalies differ in <em>speed</em>: short term reversal pays
           within a month and is gone (Jegadeesh 1990), while value, quality and accruals build over two to four
           quarters (Sloan's accruals result is an annual effect). A family that is negative at 1Q but positive
-          further out is mis timed, not broken — a candidate for a slower label or a separate slow sleeve. A
+          further out is mis timed, not broken, and a candidate for a slower label or a separate slow sleeve. A
           family negative at every horizon is genuinely inverted in this sample. Error bars are ±2
           {" "}<Term id="standarderror">standard errors</Term> (<Term id="neweywest">Newey West</Term>; lags
           scale with each label's overlap on the monthly grid).
@@ -267,14 +267,14 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
           {" "}{tsHorizons.length} horizons is 100+ <Term id="tstat">t statistics</Term>, so a few clear t = 2
           by luck alone (Harvey, Liu and Zhu 2016). A bigger IC at a slower horizon also does not mean the
           model should trade slower: IR ≈ IC × √breadth (Grinold and Kahn), and a 1M signal makes about 12
-          independent bets a year versus about 1 at 4Q. The 4Q column spans only ~15 independent windows —
+          independent bets a year versus about 1 at 4Q. The 4Q column spans only ~15 independent windows:
           directional evidence with wide bands. ★ marks the default scorer.
         </p>
       </section>
 
       {/* ================= CALIBRATION ================= */}
       <section className="card span-6">
-        <h3><Term id="calibration">Calibration</Term> — return by score bucket</h3>
+        <h3><Term id="calibration">Calibration</Term>: return by score bucket</h3>
         <p className="muted small">
           Buckets are cut <strong>within each quarter</strong>, then averaged across quarters
           (<Term id="famamacbeth">Fama MacBeth</Term>). Error bars are ±2 <Term id="standarderror">standard
@@ -302,7 +302,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
       </section>
 
       <section className="card span-6">
-        <h3><Term id="reliability">Reliability</Term> — P(underperform sector) by bucket</h3>
+        <h3><Term id="reliability">Reliability</Term>: P(underperform sector) by bucket</h3>
         <p className="muted small">
           The probability view: for each score bucket, how often did names actually trail their sector median
           over the next {h} quarter(s)? 50% (dashed) is a coin flip because the target is relative to the
@@ -329,12 +329,12 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
 
       {/* ================= EVENT STUDY + DECILES ================= */}
       <section className="card span-7">
-        <h3><Term id="eventstudy">Event study</Term> — what happens after a name is flagged</h3>
+        <h3><Term id="eventstudy">Event study</Term>: what happens after a name is flagged</h3>
         <p className="muted small">
           Cumulative average sector relative return in the quarters after sitting in the worst decile (k = 0 is
           the first quarter after the flag). "New entrants" are names that just fell into decile 10 that
           quarter. This is the deck ready read: <em>"names we flag go on to lag their sector by X% over the
-          next N quarters"</em> — provided the curve is negative and its error bars exclude zero.
+          next N quarters"</em>, provided the curve is negative and its error bars exclude zero.
         </p>
         {evAll.length ? (
           <Plot height={320}
@@ -359,7 +359,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
         ) : <Empty />}
         <p className="muted small">
           If the solid (plain mean) and dashed (<Term id="winsorizedmean">winsorized</Term>) curves diverge, the
-          flagged bucket's outcome is being carried by a handful of extreme names — decile 10 holds the
+          flagged bucket's outcome is being carried by a handful of extreme names: decile 10 holds the
           universe's most volatile names, whose <em>mean</em> can rise on lottery winners even when the typical
           flagged name goes nowhere.
         </p>
@@ -368,7 +368,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
       <section className="card span-5">
         <h3>Decile <Term id="monotonicity">monotonicity</Term></h3>
         <p className="muted small">Forward <Term id="relativereturn">relative return</Term> by sell
-          <Term id="decile"> decile</Term> — mean, <Term id="winsorizedmean">winsorized mean</Term>, and median
+          <Term id="decile"> decile</Term>: mean, <Term id="winsorizedmean">winsorized mean</Term>, and median
           (ρ = {fmt(dec?.monotonicity_rho)}; a good model slopes down).</p>
         {dec?.per_decile_mean.length ? (
           <Plot height={320}
@@ -409,7 +409,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
           Default scorer = <code>{meta.default_score}</code>. Promotion now requires a <strong>paired</strong>
           {" "}<Term id="tstat">t test</Term> on the per date IC difference
           {validation.promotion
-            ? <> — this run: diff {fmtSigned(validation.promotion.mean_diff, 4)}, t = {fmt(validation.promotion.t_stat)}
+            ? <>. This run: diff {fmtSigned(validation.promotion.mean_diff, 4)}, t = {fmt(validation.promotion.t_stat)}
                 over {validation.promotion.n_periods} dates → <strong>{validation.promotion.promote ? "promoted" : "baseline kept"}</strong>.</>
             : <> (learned model not fitted this run).</>}
           {" "}A point estimate edge is noise, not a win.
@@ -420,7 +420,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
         <h3>Data integrity gate</h3>
         <p className="muted small">
           Forward return windows spanning a <Term id="splice">splice artifact</Term> (or beyond a 50x error
-          net) are excluded from every statistic on this page and logged here — never silently used. One such
+          net) are excluded from every statistic on this page and logged here, never silently used. One such
           artifact (a bankruptcy emergence spliced into one ticker at +13,000%) previously made calibration
           bucket 4 look like the best performer. Genuine moonshots (GME, MARA in 2020 to 2021) are deliberately
           kept: the skew they cause is handled by the median / winsorized views, not by deletion.
@@ -458,14 +458,14 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
           "Add override" and <code>docs/override-layer-design.md</code>). They never change a score. Each quarter
           an overridden name realizes a relative return, we check who was right: the analyst's direction or the
           model's. The clinical vs statistical prediction literature (Meehl 1954; Grove &amp; Meehl 2000) predicts
-          the <code>thesis_disagreement</code> bucket will lose to the model — this table finds out.
+          the <code>thesis_disagreement</code> bucket will lose to the model; this table finds out.
         </p>
         {(() => {
           const sb = overrides?.scoreboard as any;
           if (!sb || !sb.n_scored_obs) {
             return <p className="muted small">
               {overrides?.active?.length
-                ? `${overrides.active.length} active override(s) on file — none has realized a scoreable quarter yet.`
+                ? `${overrides.active.length} active override(s) on file; none has realized a scoreable quarter yet.`
                 : "No overrides on file yet. File the first one from any name's drill down panel."}
             </p>;
           }
@@ -497,7 +497,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
       </section>
 
       {/* ================= BACKTEST ================= */}
-      <h2 className="span-12 section-head">Backtest — quarterly rebalance, {meta.cost_bps} <Term id="turnover">bps</Term> cost</h2>
+      <h2 className="span-12 section-head">Backtest: quarterly rebalance, {meta.cost_bps} <Term id="turnover">bps</Term> cost</h2>
       <div className="help-note span-12">
         <strong>The screen is judged against its own equal weight universe, not the ETF.</strong> An equal weight
         small cap portfolio structurally beats the cap weighted {meta.benchmark}, so comparing "avoid the worst
@@ -580,7 +580,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
       </section>
 
       {/* ================= IMA MONTE CARLO ================= */}
-      <h2 className="span-12 section-head"><Term id="montecarlo">IMA simulation</Term> — does the screen help a {mcSim?.n_names ?? 20} name picker?</h2>
+      <h2 className="span-12 section-head"><Term id="montecarlo">IMA simulation</Term>: does the screen help a {mcSim?.n_names ?? 20} name picker?</h2>
       <div className="help-note span-12">
         <strong>Why a distribution and not one backtest.</strong> IMA holds ~{mcSim?.n_names ?? 20} names, and at
         that concentration any single simulated portfolio is decided by luck. So {mcSim?.n_trials ?? 1000} random
@@ -621,7 +621,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
         <p className="muted small">
           "P(beat unscreened)" = share of screened trials beating the unscreened median. 50% means the screen
           did nothing; materially above 50% means a random picker was better off inside the screen. The p5
-          column is the disaster draw — a good screen protects it most.
+          column is the disaster draw; a good screen protects it most.
         </p>
       </section>
     </div>

@@ -66,7 +66,7 @@ export function MethodologyView({ meta }: Bundle) {
           red flag direction so that <em>larger means more expected underperformance</em>.</p>
         <ul>
           {groups.map((g) => (
-            <li key={g}><strong>{g}</strong> — {DIRECTION_NOTE[g] ?? ""}: <code>{byGroup(g).join(", ")}</code></li>
+            <li key={g}><strong>{g}</strong> · {DIRECTION_NOTE[g] ?? ""}: <code>{byGroup(g).join(", ")}</code></li>
           ))}
         </ul>
         <div className="help-note">
@@ -84,8 +84,8 @@ export function MethodologyView({ meta }: Bundle) {
         <p>
           Every comparison happens inside a <strong>(date, sector, index)</strong> peer group: an S&amp;P 600
           name is z scored, labeled, and deciled against S&amp;P 600 sector peers only, and a 400 graduate
-          against 400 peers only. IMA picks from the 600 — the <Term id="selectionuniverse">selection
-          universe</Term> — so every validation statistic, backtest, and simulation runs on the 600 alone,
+          against 400 peers only. IMA picks from the 600 (the <Term id="selectionuniverse">selection
+          universe</Term>), so every validation statistic, backtest, and simulation runs on the 600 alone,
           while the 400 stays scored purely so graduated holdings remain monitorable in the overlay. The
           candidate lists default to 600 with a toggle.
         </p>
@@ -95,10 +95,10 @@ export function MethodologyView({ meta }: Bundle) {
           Cross sections are cut <strong>monthly back to 2010</strong> (~200 observation dates). Labels still
           look {meta.horizon_q} quarter(s) ahead, so adjacent months are
           <Term id="overlapping"> overlapping observations</Term> and the <Term id="neweywest">Newey West</Term>
-          lag count scales with the overlap — the standard Jegadeesh Titman construction, adopted for
+          lag count scales with the overlap. This is the standard Jegadeesh Titman construction, adopted for
           statistical power. Traded constructions (backtest, Monte Carlo) and quarter over quarter comparisons
           step on the quarter end subset: overlap is a statistics tool, not a tradeable rebalance. The monthly
-          grid also guarantees a fresh post earnings cross section every quarter — rerun the pipeline the day
+          grid also guarantees a fresh post earnings cross section every quarter: rerun the pipeline the day
           after prints for IMA's post earnings updates.
         </p>
 
@@ -107,7 +107,7 @@ export function MethodologyView({ meta }: Bundle) {
           <li>Compute every factor peer neutrally (z score within GICS sector × index at each date), sign
             aligned to its red flag direction.</li>
           <li><strong><Term id="familybalanced">Family balanced</Term> baseline</strong>: factors are averaged
-            within their family first, then across families — four collinear valuation ratios cast ONE vote,
+            within their family first, then across families, so four collinear valuation ratios cast ONE vote,
             and the price derived families (Momentum, Volatility) cannot swamp the fundamental ones no matter
             how many price factors exist. A name needs at least 3 populated factors across at least 2 families
             to be scored at all, and the composite is standardized again within each peer group so thin coverage
@@ -115,7 +115,7 @@ export function MethodologyView({ meta }: Bundle) {
             <Term id="decile"> deciles</Term>. This baseline ships and is validated first.</li>
           <li><Term id="learnedweight">Learned weight</Term> model (ridge), trained
             <Term id="walkforward"> walk forward</Term> on the selection universe against forward relative
-            returns — fitted on every run since the 183 quarter history showed the factor families carry
+            returns, fitted on every run since the 183 quarter history showed the factor families carry
             opposite signs (valuation flags work, quality flags inverted), which an equal weight sum cancels
             and a fit can learn. It becomes the default scorer only if it <strong>beats the baseline
             <Term id="oos"> out of sample</Term></strong> on a paired per date IC t test at a one sided 5% bar
@@ -127,7 +127,7 @@ export function MethodologyView({ meta }: Bundle) {
           5% bar (t ≥ 1.645) by PM decision on 2026 07 13, <em>after</em> observing a paired t of 1.88 on the
           2011 to 2026 history. The statistical case for one sided is legitimate (the hypothesis is directional
           and out of sample), but changing a bar after seeing the number is exactly the kind of judgment call
-          that must be disclosed rather than buried — so it lives here, in the config comments, and in the git
+          that must be disclosed rather than buried, so it lives here, in the config comments, and in the git
           history. The side by side model comparison ships on every run regardless of which model is default.
         </p>
 
@@ -135,12 +135,12 @@ export function MethodologyView({ meta }: Bundle) {
         <p>
           Fundamental factors are built from the SEC's XBRL <code>companyfacts</code> API: every figure a
           company ever filed, quarterly back to ~2009 to 2012 for most names, each stamped with its actual
-          <strong> filing date</strong> — which becomes the panel's as of date (true
+          <strong> filing date</strong>, which becomes the panel's as of date (true
           <Term id="pointintime"> point in time</Term> knowledge instead of a flat reporting lag guess). Values
           are always the <em>first filed</em> number, never a later restatement. Filers that tag the same line
           item under different concepts across the years are merged by an alias map, and year to date cash flow
           figures are differenced into quarters (Q4 = FY − Q3 YTD). No API key is involved; the SEC only
-          requires an identifying User-Agent. yfinance remains a per name fallback.
+          requires an identifying User Agent header. yfinance remains a per name fallback.
         </p>
 
         <h3>Torpedo screener (absolute risk)</h3>
@@ -159,7 +159,7 @@ export function MethodologyView({ meta }: Bundle) {
           a ticker reuse), which manufactures a fake giant one day "return" that no investor earned. Any single
           day price ratio beyond 4x (or below 0.25x) is flagged as a <Term id="splice">splice artifact</Term>,
           every forward return window spanning that day is <strong>excluded from labels and logged</strong>
-          (see the Validation tab), and a backstop drops any window beyond 50x — a pure data error net, set far
+          (see the Validation tab), and a backstop drops any window beyond 50x, a pure data error net set far
           above the largest genuine small cap moonshots (~26x over two quarters in 2020 to 2021), which are
           deliberately <em>kept</em>: deleting real right tail events would erase the model's worst potential
           misses and flatter every statistic. Display statistics
@@ -171,7 +171,7 @@ export function MethodologyView({ meta }: Bundle) {
 
         <h3><Term id="coveragera">Coverage eras</Term></h3>
         <p>
-          yfinance fundamentals reach back only ~4–5 quarters, so most historical cross sections were scored by
+          yfinance fundamentals reach back only ~4 to 5 quarters, so most historical cross sections were scored by
           the two price factors alone while the latest ones use all {meta.n_factors}. Every headline statistic
           is therefore split into a <em>price only era</em> and a <em>full factor era</em>: pooling them would
           answer a mixed question, and the split makes it impossible to accidentally present a momentum/reversal
@@ -190,22 +190,22 @@ export function MethodologyView({ meta }: Bundle) {
             cut <em>within each quarter</em>, per bucket outcomes averaged across quarters with
             <Term id="standarderror"> standard errors</Term>, and skew robust companions (median,
             <Term id="winsorizedmean"> winsorized mean</Term>) shown alongside. The
-            <Term id="reliability"> reliability curve</Term> reports P(underperform sector) per bucket — the
+            <Term id="reliability"> reliability curve</Term> reports P(underperform sector) per bucket: the
             score translated into a probability statement.</li>
           <li><strong><Term id="eventstudy">Event study</Term></strong>: the average cumulative sector relative
-            return in the 1–4 quarters <em>after</em> a name sits in (or newly enters) the worst decile — the
+            return in the 1 to 4 quarters <em>after</em> a name sits in (or newly enters) the worst decile: the
             most presentation ready read of what a flag has historically meant.</li>
           <li><strong><Term id="decile">Decile</Term> spread</strong> (best minus worst) per period and pooled,
             with a t statistic, plus a <Term id="monotonicity">monotonicity</Term> test across deciles.</li>
           <li><strong>Backtests</strong> (quarterly rebalance, {meta.cost_bps} <Term id="turnover">bps</Term>
             cost, turnover reported): the screen is judged as <em>avoid the worst decile</em> minus
-            <em> hold everything</em>, both equal weight — comparing an equal weight portfolio to the cap
+            <em> hold everything</em>, both equal weight, because comparing an equal weight portfolio to the cap
             weighted <Term id="benchmark">{meta.benchmark}</Term> would credit the model with the structural
             equal weight effect, so {meta.benchmark} is shown as market context only. Calendar year and market
             regime segments are reported so no single period can quietly carry the result.</li>
           <li><strong><Term id="montecarlo">IMA Monte Carlo</Term></strong>: thousands of random 20 name
-            portfolios drawn per rebalance under each screening rule (no screen / drop decile 10 / drop 9–10 /
-            top half only), compared as full distributions — the honest way to measure what the screen does for
+            portfolios drawn per rebalance under each screening rule (no screen / drop decile 10 / drop 9 and 10 /
+            top half only), compared as full distributions: the honest way to measure what the screen does for
             a concentrated picker. This replaced the earlier long/short sleeve, which was removed deliberately:
             IMA is long only and a flat bps cost wildly understates real small cap borrow, so its Sharpe invited
             objections rather than evidence.</li>
@@ -228,8 +228,8 @@ export function MethodologyView({ meta }: Bundle) {
         <h3>Per name transparency</h3>
         <p>
           Every ticker on this site is clickable. The drill down shows the full factor decomposition behind the
-          name's decile — each factor's raw value, formula, direction aligned sector <Term id="zscore">z
-          score</Term>, within sector percentile, and quarter over quarter change — plus a coverage badge (how
+          name's decile (each factor's raw value, formula, direction aligned sector <Term id="zscore">z
+          score</Term>, within sector percentile, and quarter over quarter change), plus a coverage badge (how
           many of the {meta.n_factors} factors are actually populated), the as of date of the fundamentals used,
           the torpedo contrast, and a copyable risks section draft. "Why is this name flagged" should never
           require reading code.
@@ -237,16 +237,16 @@ export function MethodologyView({ meta }: Bundle) {
 
         <h3>How this differs from the Piper Sandler Sell Model</h3>
         <p>
-          The PSC Sell Model shares this model's architecture — an equal weighted, sector neutral red flag
-          count, deciled within sector, decile 10 = most at risk — but the ingredient lists overlap only
+          The PSC Sell Model shares this model's architecture (an equal weighted, sector neutral red flag
+          count, deciled within sector, decile 10 = most at risk), but the ingredient lists overlap only
           partially. Piper's 14 factors (7 categories × 2) include equity duration, shareholder yield, revenue
           variance, change in days payable, EPS variance, change in receivables, EVA, change in depreciable
-          life, and <Term id="sue">SUE</Term> — none of which are carried here — while this model carries
+          life, and <Term id="sue">SUE</Term> (none of which are carried here), while this model carries
           valuation multiples (P/E, EV/EBITDA, P/S, FCF yield) and explicit quality levels (ROE, ROA, margins)
           that Piper's list does not. The peer groups also differ: Piper ranks within S&amp;P 1500 / Russell
           universe sectors, this model within the S&amp;P 600+400 union. Rank disagreements between the two on a
           specific name are therefore <em>expected</em> and usually explainable by a factor one model carries
-          and the other does not — the drill down is the tool for answering exactly that question.
+          and the other does not; the drill down is the tool for answering exactly that question.
         </p>
 
         <h3>Point in time data and survivorship</h3>
@@ -266,7 +266,7 @@ export function MethodologyView({ meta }: Bundle) {
           <li><strong>EDGAR fundamentals reach back to ~2009 to 2012, not further.</strong> Pre XBRL cross sections
             carry price factors only; some filers tag line items idiosyncratically (the alias map is maintained,
             not perfect); and names without a CIK fall back to shallow yfinance statements. The coverage era
-            split reports exactly which cross sections carry full factor coverage — read it before quoting any
+            split reports exactly which cross sections carry full factor coverage. Read it before quoting any
             pooled number.</li>
           <li><strong>Estimate factors are off unless wired in.</strong> Analyst revisions and
             <Term id="sue"> SUE</Term> cannot be built from yfinance, so they are gated

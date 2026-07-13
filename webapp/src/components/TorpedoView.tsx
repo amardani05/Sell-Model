@@ -33,7 +33,7 @@ export function TorpedoView({ meta, scores, torpedo }: Bundle) {
     <div className="grid">
       <section className="card span-12">
         <div className="row-between">
-          <h2>Torpedo screener — the absolute risk view</h2>
+          <h2>Torpedo screener: the absolute risk view</h2>
           <UniverseToggle value={universe} onChange={setUniverse} counts={meta.index_counts} />
         </div>
         <p>
