@@ -22,6 +22,9 @@ export interface Meta {
   index_counts?: Record<string, number>;
   use_estimate_factors: boolean;
   diagnostics: Diagnostics;
+  exclusions_summary?: { n_labels_excluded: number; n_tickers: number; reasons: Record<string, number> };
+  mc_portfolio_size?: number;
+  mc_n_trials?: number;
   sector_colors: Record<string, string>;
   torpedo_tier_colors: Record<string, string>;
   torpedo_tier_order: string[];
@@ -82,22 +85,148 @@ export interface ICBlock {
   series: { date: string; ic: number; n: number }[];
 }
 export interface DecileBlock {
-  per_decile_mean: { decile: number; mean_rel_ret: number; n: number }[];
+  per_decile_mean: { decile: number; mean_rel_ret: number; median_rel_ret: number | null; mean_rel_ret_w: number | null; n: number }[];
   spread_mean: number | null; spread_tstat: number | null; monotonicity_rho: number | null;
   spread_series: { date: string; spread: number }[];
 }
+
+export interface CalibrationRow {
+  score_q: number;
+  mean_rel_ret: number | null;
+  se: number | null;
+  t_stat: number | null;
+  median_rel_ret: number | null;
+  mean_rel_ret_w: number | null;
+  p_underperform: number | null;
+  p_underperform_se: number | null;
+  mean_score: number | null;
+  n_dates: number;
+  n_obs: number;
+}
+
+export interface EventStudyRow {
+  cohort: "all" | "entrant";
+  k: number;
+  mean_rel_ret: number | null;
+  se: number | null;
+  mean_rel_ret_w: number | null;
+  cum_mean: number | null;
+  n: number;
+}
+
+export interface EraRow { date: string; avg_factors: number; era: string; }
+export interface EraICRow { era: string; mean_ic: number | null; t_stat: number | null; ir: number | null; n_periods: number; }
+export interface YearlyICRow { year: number; mean_ic: number | null; n_periods: number; }
+export interface Promotion { mean_diff: number | null; t_stat: number | null; n_periods: number; promote: boolean; }
+
 export interface Validation {
   ic: Record<string, ICBlock>;
   deciles: Record<string, DecileBlock>;
-  calibration: { score_q: number; mean_score: number; mean_rel_ret: number; n: number }[];
+  calibration: CalibrationRow[];
   model_comparison: { model: string; score_col: string; mean_ic: number; t_stat: number; ir: number; hit_rate: number; n_periods: number }[];
+  promotion: Promotion | null;
+  event_study: EventStudyRow[];
+  eras: EraRow[];
+  era_ic: EraICRow[];
+  yearly_ic: YearlyICRow[];
+  label_winsor_pct: number;
+  era_min_avg_factors: number;
 }
 
 export interface BacktestSleeve {
   name: string;
-  metrics: Record<string, number>;
+  metrics: Record<string, number | null>;
   curve: { date: string; strategy: number; benchmark: number | null }[];
   returns: { date: string; ret: number }[];
   turnover: { date: string; turnover: number }[];
 }
-export type Backtest = Record<string, BacktestSleeve>;
+export interface Backtest {
+  sleeves: Record<string, BacktestSleeve>;
+  segments: {
+    by_year: Record<string, number | null>[];
+    by_regime: Record<string, number | string | null>[];
+  };
+}
+
+export interface MCTier {
+  label: string;
+  cagr: { p5: number; p25: number; p50: number; p75: number; p95: number; mean: number };
+  prob_beat_full_median: number | null;
+  trial_cagrs: number[];
+  equity_bands: Record<string, number[]>;
+}
+export interface MCSim {
+  dates?: string[];
+  n_names?: number;
+  n_trials?: number;
+  tiers?: Record<string, MCTier>;
+}
+
+export interface Exclusions {
+  n_labels_excluded: number;
+  n_tickers: number;
+  reasons: Record<string, number>;
+  rows: { date: string; ticker: string; horizon_q: number; reason: string; value: number | null }[];
+}
+
+export interface DrilldownFactor {
+  raw: number | null;
+  z: number | null;
+  pct: number | null;      // within sector percentile of the aligned z (100 = worst red flag)
+  prev_z: number | null;
+}
+export interface DrilldownName {
+  sector: string;
+  index_name: string;
+  score: number | null;
+  decile: number | null;
+  prev_score: number | null;
+  prev_decile: number | null;
+  n_factors_used: number;
+  fund_as_of: string | null;
+  torpedo_pct: number | null;
+  torpedo_tier: string | null;
+  short_pct_float: number | null;
+  factors: Record<string, DrilldownFactor | null>;
+}
+export interface Drilldown {
+  as_of: string;
+  prev_date: string | null;
+  factor_order: string[];
+  names: Record<string, DrilldownName>;
+}
+
+export interface OverrideRow {
+  date: string;
+  ticker: string;
+  analyst: string;
+  direction: "less_risky" | "more_risky";
+  reason_code: string;
+  factor: string;
+  note: string;
+  expires: string;
+}
+export interface OverrideScoreboard {
+  n_overrides: number;
+  n_scored_obs: number;
+  analyst_hit_rate: number | null;
+  model_hit_rate: number | null;
+  by_reason: { reason_code: string; n_obs: number; analyst_hit_rate: number; avg_rel_ret: number }[];
+  rows: { ticker: string; analyst: string; direction: string; reason_code: string; quarter: string; rel_ret: number; analyst_correct: boolean }[];
+}
+export interface Overrides {
+  active: OverrideRow[];
+  scoreboard: OverrideScoreboard | Record<string, never>;
+  reason_codes: string[];
+}
+
+export interface Transitions {
+  n_deciles: number;
+  n_date_pairs: number;
+  counts: number[][];
+  row_prob: number[][];
+  new_flagged: { ticker: string; sector: string; decile: number; prev_decile: number | null }[];
+  exited: { ticker: string; sector: string; decile: number; prev_decile: number }[];
+  latest_date: string | null;
+  prev_date: string | null;
+}

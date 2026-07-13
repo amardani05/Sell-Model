@@ -11,11 +11,19 @@ const GROUP_COLOR: Record<string, string> = {
 
 export function FactorICView({ factorIC }: Bundle) {
   const rows = [...factorIC.factors].sort((a, b) => (b.mean_ic ?? -9) - (a.mean_ic ?? -9));
+  const thin = rows.filter((r) => r.n_periods < 8).length;
 
   return (
     <div className="grid">
       <section className="card span-12">
         <h2>Per factor <Term id="ic">Information Coefficient</Term> (h={factorIC.horizon_q}Q)</h2>
+        {thin > 0 && (
+          <p className="callout warn small">
+            ⚠ {thin} of {rows.length} factors have fewer than 8 scored quarters (yfinance fundamentals only reach
+            back ~4–5 quarters), so their ICs here are anecdotes, not evidence — check the Periods column before
+            reading anything into a bar. The price factors (momentum, reversal) carry the long history.
+          </p>
+        )}
         <p className="muted">
           Each bar is one direction aligned, <Term id="sectorneutral">sector neutral</Term> factor used
           <em> alone</em> as a score. A positive <Term id="ic">IC</Term> means the factor's documented red flag

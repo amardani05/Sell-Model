@@ -68,18 +68,21 @@ CLI flags: `--synthetic`, `--since YYYY-MM-DD`, `--horizon-q {1,2}`, `--cost-bps
 
 | Module | Role |
 |---|---|
-| `config.py` | factor taxonomy, sector neutral **red flag direction** map, horizons, cost bps, rebalance freq, model + estimate source flags, paths |
+| `config.py` | factor taxonomy, sector neutral **red flag direction** map, horizons, cost bps, **data integrity gate thresholds**, coverage era threshold, Monte Carlo knobs, model + estimate source flags, paths |
 | `universe.py` | **point in time** S&P 600 + 400 membership store loader + Wikipedia current fallback (warns loudly) |
 | `data_loader.py` | deep price history (delisting aware), shallow yfinance fundamentals, short interest |
-| `feature_engine.py` | sector relative factor computation (`get_field` alias pattern), the panel, **delisting aware forward relative returns**, sector neutralization |
+| `feature_engine.py` | sector relative factor computation (`get_field` alias pattern), the panel, **delisting aware, splice gated forward relative returns** (`detect_price_anomalies` + exclusion log), sector neutralization |
 | `model.py` | equal weight baseline + optional **walk forward** learned weight model; sector neutral deciles |
-| `validate.py` | Fama MacBeth IC + Newey West (5 lag) t stat, decile spread + monotonicity, calibration, per factor IC, baseline vs learned |
-| `backtest.py` | long only "avoid worst decile" vs IJR + sector neutral long/short; turnover, costs, delisting aware |
+| `validate.py` | Fama MacBeth IC + Newey West t stat (lags scale with label overlap), **per date calibration with SE bands / medians / winsorized means**, **P(underperform) reliability curve**, **decile 10 event study**, **coverage era split**, IC by year, decile spread + monotonicity, per factor IC, baseline vs learned + **paired promotion test** |
+| `backtest.py` | equal weight **hold all** base + "avoid worst decile" sleeve (screen judged vs its own EW universe; IJR = context), benchmark metrics row, **calendar year + market regime segments** |
+| `simulate.py` | **IMA Monte Carlo**: distributions of random 20 name portfolios per screening tier (replaces the removed long/short sleeve) |
 | `deep_loader.py` | **gated** FactSet / S&P Global PIT fundamentals + estimate revision loader |
-| `webapp_export.py` | dump every table to `webapp/public/data/*.json` + `meta.json` |
+| `webapp_export.py` | dump every table to `webapp/public/data/*.json` + `meta.json`, incl. **per name drill down**, transitions, exclusions, MC results |
 | `main.py` | orchestrator + CLI |
 | `diagnostics/` | placebo IC, look ahead assertion, survivorship assertion, synthetic generator, `run_all` |
-| `webapp/` | React + Vite + TypeScript dashboard (Plotly), 6 tabs |
+| `overrides.py` | **analyst override layer**: attributed, expiring annotations that never touch the score, scored quarterly (analyst vs model hit rates by reason code) |
+| `webapp/` | React + Vite + TypeScript dashboard (Plotly), 7 tabs + click through per name drill down |
+| `docs/` | design documents (override layer rationale, IC improvement roadmap) |
 
 ---
 
@@ -111,9 +114,10 @@ The estimate factors are **off by default** and only populated by `deep_loader.p
 2. **Baseline = equal weight composite** of the sector neutral factors → sector neutral
    deciles. This Piper style baseline ships and is validated **first**.
 3. **Optional learned weight model** (ridge / logistic / GBM), trained **walk forward**
-   against forward relative returns. It becomes the default scorer **only if it strictly
-   beats the baseline out of sample** (`main.py`); otherwise the baseline stays default.
-   We never present fitted then ignored weights.
+   against forward relative returns. It becomes the default scorer **only if it beats the
+   baseline out of sample on a paired per date IC t test** (`validate.paired_ic_test`,
+   t ≥ `config.PROMOTION_MIN_T`); a point estimate edge is noise, not a win. Otherwise the
+   baseline stays default. We never present fitted then ignored weights.
 
 ### Baseline vs learned — out of sample comparison
 
@@ -138,20 +142,77 @@ is exactly why the code keeps the baseline in charge.
 
 ---
 
+## Data integrity gate (runs before any statistic)
+
+Free price feeds occasionally splice two securities under one ticker (bankruptcy
+emergence, ticker reuse), manufacturing fake giant one day "returns" (canonical case:
+CHRD, where the pre Chapter 11 Oasis stub at $0.07 meets the new equity at $19.93 — a
++28,000% day nobody earned; a single such window once made calibration bucket 4 the
+"best" performer). The gate (`feature_engine.detect_price_anomalies`):
+
+* flags any single day price ratio outside `[0.25x, 4x]` as a **splice artifact**;
+* **excludes** every forward return window spanning a flagged day (reason
+  `splice_window`), plus a 50x-per-window backstop (`extreme_return`) — a pure data error
+  net set far above the largest *genuine* small cap moonshots (~26x over two quarters in
+  2020–21), which are deliberately **kept**: deleting real right tail events would erase
+  the model's worst potential misses and flatter every statistic;
+* logs every exclusion to `webapp/public/data/exclusions.json` and the terminal — nothing
+  is silently dropped, nothing corrupt is silently kept.
+
+Display statistics additionally report **medians and 1% winsorized means** next to plain
+means (`config.LABEL_WINSOR_PCT`), because sector relative returns are right skewed. Rank
+statistics (IC) are winsorization invariant; backtests always use raw gated returns.
+
+---
+
 ## Validation (first class deliverable)
 
 * **Sector neutral IC** = −Spearman(score, forward relative return) per cross section
   (sign convention: *positive = skill*, because the score ranks underperformance),
-  averaged Fama MacBeth with a **Newey West (HAC, 5 lag) t stat**; mean IC, t, IR, and the
-  IC time series are all reported.
+  averaged Fama MacBeth with a **Newey West t stat whose lags scale with the label
+  overlap** (h − 1 quarters, floored at 1); mean IC, t, IR, the IC time series, and an
+  **IC by calendar year** split are all reported.
+* **Coverage eras** — yfinance fundamentals reach back only ~4–5 quarters, so historical
+  cross sections are scored by the price factors alone. Every headline stat is split into
+  a **price-only era** and a **full-factor era** (`config.ERA_MIN_AVG_FACTORS`), so a two
+  factor history is never presented as evidence about the 15 factor composite.
+* **Calibration, the Fama MacBeth way** — score quantiles are cut **within each date**,
+  then per bin stats are averaged across dates with **standard errors**; medians and
+  winsorized means ride alongside. The **reliability curve** reports P(underperform
+  sector median) per bin — the score translated into a probability a PM can use.
+* **Decile 10 event study** — average cumulative sector relative return 1–4 quarters
+  *after* a name sits in (or newly enters) the worst decile, with error bands. The
+  presentation ready read of what a flag has historically meant (and the same chart
+  format Piper leads its deck with).
 * **Decile spread** = best decile minus worst decile forward relative return, per period and
   pooled, with a t stat, plus a **monotonicity** test (Spearman of decile vs mean relative
   return; a good model is ≈ −1).
-* **Backtests** (quarterly rebalance, configurable bps cost, turnover reported):
-  (a) long only "avoid the worst sector neutral decile" vs IJR; (b) sector neutral
-  long/short (long best decile, short worst). CAGR, vol, Sharpe, max DD, hit rate.
+* **Backtests** (quarterly rebalance, configurable bps cost, turnover reported): the
+  screen is judged as **"avoid the worst decile" minus "hold everything", both equal
+  weight** — comparing an EW portfolio against the cap weighted IJR would credit the model
+  with the structural equal weight effect, so IJR is reported as market context only
+  (with its own metrics row). Value added is reported with tracking error, IR, and hit
+  rate, plus **calendar year and market regime segments** so no single period can quietly
+  carry the result.
+* **IMA Monte Carlo** (`simulate.py`) — thousands of random 20 name portfolios per
+  rebalance under each screening rule (no screen / drop decile 10 / drop 9–10 / top half
+  only), compared as full distributions (median CAGR, tails, P(beat unscreened median)).
+  This is the honest way to measure what the screen does for a concentrated picker, and
+  it **replaces the removed long/short sleeve** (IMA is long only, and flat bps costs
+  wildly understate small cap borrow).
 * **Walk forward only**: features at t use data ≤ t; labels use returns in (t, t+h]. No
   global fit.
+
+## Per name transparency
+
+Every ticker in the dashboard is clickable: the drill down shows the factor
+decomposition behind the decile (raw value, formula, direction aligned sector z score,
+within sector percentile, QoQ change per factor), a coverage badge, the fundamentals
+as of date, the torpedo contrast, and a **copyable risks section draft** whose base rate
+claims are gated until the full factor era is long enough to cite honestly. The
+Portfolio Overlay tab turns this into a quarterly **holdings risk review** (QoQ decile
+transitions, NEW / DOUBLE flag badges, universe flag churn, decile transition matrix,
+copy as markdown).
 
 ---
 
@@ -212,11 +273,20 @@ In the spirit of IMA PCA's limitations section — the things to say out loud:
   PIT, deep history run is required for a real verdict.
 - **Sectors with < 5 names on a date are dropped** from that cross section — within sector
   ranks are meaningless on tiny groups (`config.MIN_NAMES_PER_SECTOR`).
-- **Transaction costs are a turnover × bps approximation** with target (not drift) weights;
-  the long/short sleeve turns over heavily by construction (full decile refresh each quarter).
-- **The committed dashboard data uses `source = synthetic`** — a machinery demonstration with
-  a planted signal, clearly labeled in the header. Re run `python main.py` to point the
-  dashboard at real data.
+- **Transaction costs are a turnover × bps approximation** with target (not drift) weights.
+  The Monte Carlo simulation is gross of costs (all tiers redraw identically, so costs
+  cancel in the tier comparison).
+- **Delistings are carried at −100%** (`config.DELISTING_TERMINAL_RETURN`), which is right
+  for bankruptcies but wrong for acquisitions (usually a premium). With a current only
+  membership snapshot the panel carries ~0 delistings so the bias is dormant, but a true
+  PIT store must arrive with a `delist_note` distinguishing M&A from failure before the
+  terminal return logic can be trusted on history.
+- **The splice gate is a heuristic.** Single day moves beyond 4x are treated as data
+  artifacts; every exclusion is logged to `exclusions.json` for human review rather than
+  silently discarded — audit that file after each refresh.
+- **Whatever `source` the header shows is what the dashboard is.** A `synthetic` source is
+  a machinery demonstration with a planted signal, clearly labeled. Re run
+  `python main.py` to point the dashboard at real data.
 
 ---
 
@@ -226,16 +296,27 @@ React + Vite + TypeScript under [`webapp/`](webapp/). Every run exports JSON to
 `webapp/public/data/*.json` + `meta.json`; the app builds its Plotly figures from those
 tables. Tabs:
 
-- **Overview** — the question, three way contrast, headline IC/decile KPIs, diagnostics gate.
+- **Overview** — the question, three way contrast, headline IC/decile KPIs, coverage era
+  callout, diagnostics gate (now incl. the data integrity / splice gate).
 - **Sector Deciles** — sector × decile heatmap; names by sector.
 - **Torpedo Screener** — the integrated absolute risk view: universe percentile + tier, and a relative versus absolute contrast scatter that flags the double red flag names.
-- **Factor IC** — per factor IC bar (by family) + table.
-- **Validation / Backtest** — IC time series, decile monotonicity, calibration, baseline vs learned, equity curves.
-- **Portfolio Overlay** — paste a sleeve; see which holdings sit in the worst sell decile.
-- **Methodology** — full write up incl. limitations and PIT schema.
+- **Factor IC** — per factor IC bar (by family) + table, with a thin history warning when
+  factors have too few scored quarters to mean anything.
+- **Validation / Backtest** — coverage era split, IC time series + IC by year, Fama MacBeth
+  calibration with error bands / medians / winsorized means, P(underperform) reliability
+  curve, decile 10 event study, paired promotion test, exclusions log, EW vs EW backtest
+  with IJR context, calendar year + regime segments, and the IMA Monte Carlo distributions.
+- **Portfolio Overlay** — the quarterly holdings risk review: QoQ decile transitions,
+  top quantitative flags per holding, NEW / DOUBLE badges, universe flag churn, decile
+  transition matrix, copy as markdown.
+- **Methodology** — full write up incl. limitations, PIT schema, data integrity gate, and
+  the Piper Sandler contrast.
 
 Every acronym and term in the dashboard (IC, IR, Fama MacBeth, Newey West, Sharpe, CAGR,
 decile, accruals, and so on) is hoverable and shows an inline plain language definition.
+**Every ticker is clickable** and opens the per name drill down: factor waterfall, raw
+values + formulas, sector percentiles, QoQ changes, coverage badge, and a copyable risks
+section draft.
 
 ---
 

@@ -206,14 +206,59 @@ def _asof_sample(panel: pd.DataFrame, dates: list[pd.Timestamp]) -> pd.DataFrame
 
 
 # =============================================================================
-# Forward relative returns (delisting aware)
+# Data integrity gate: price splice detection
 # =============================================================================
-def _forward_returns(prices: pd.DataFrame, q_dates: list[pd.Timestamp], horizon_q: int) -> pd.DataFrame:
+def detect_price_anomalies(prices: pd.DataFrame) -> pd.DataFrame:
+    """Flag single day price ratios outside the sane band as splice artifacts.
+
+    yfinance occasionally splices two different securities under one ticker
+    (bankruptcy emergence, ticker reuse): the canonical case is CHRD, where the
+    pre Chapter 11 Oasis Petroleum stub ($0.07) meets the new equity ($19.93)
+    overnight — a fake +28,000% day that is NOT a return anyone earned. Splits
+    are already adjusted upstream, so days beyond the configured ratio band are
+    treated as data artifacts. Returns [ticker, date, ratio, reason]; every
+    forward return window spanning a flagged day is excluded from labels.
+    """
+    rows = []
+    for tk in prices.columns:
+        s = prices[tk].dropna()
+        if len(s) < 2:
+            continue
+        ratio = s / s.shift(1)
+        bad = ratio[(ratio > config.MAX_DAILY_PRICE_RATIO) | (ratio < config.MIN_DAILY_PRICE_RATIO)]
+        for dt, r in bad.items():
+            rows.append({"ticker": tk, "date": pd.Timestamp(dt), "ratio": float(r),
+                         "reason": "daily_jump"})
+    out = pd.DataFrame(rows, columns=["ticker", "date", "ratio", "reason"])
+    if not out.empty:
+        logger.warning("DATA INTEGRITY: %d single day price jumps beyond [%.2fx, %.2fx] "
+                       "flagged as splice artifacts across %d tickers: %s",
+                       len(out), config.MIN_DAILY_PRICE_RATIO, config.MAX_DAILY_PRICE_RATIO,
+                       out["ticker"].nunique(),
+                       ", ".join(sorted(out["ticker"].unique())[:12]))
+    return out
+
+
+# =============================================================================
+# Forward relative returns (delisting aware, splice gated)
+# =============================================================================
+def _forward_returns(
+    prices: pd.DataFrame,
+    q_dates: list[pd.Timestamp],
+    horizon_q: int,
+    anomalies: pd.DataFrame | None = None,
+    exclusions_out: list | None = None,
+) -> pd.DataFrame:
     """Wide [date x ticker] forward TOTAL return over ``horizon_q`` quarters.
 
     Delisting aware: a name that stops trading between t and the horizon end is
     set to ``config.DELISTING_TERMINAL_RETURN`` (carried to terminal value).
     A still living name without enough future data yet stays NaN.
+
+    Splice gated: a window that spans a flagged anomaly day (see
+    :func:`detect_price_anomalies`) is excluded (NaN) and recorded in
+    ``exclusions_out``, as is any return beyond ``config.MAX_ABS_FORWARD_RETURN``
+    (backstop). Excluded cells are never delisting filled.
     """
     horizon_days = horizon_q * config.TRADING_DAYS_PER_QUARTER
     px_q = _asof_sample(prices, q_dates)                       # price at each rebalance
@@ -221,6 +266,18 @@ def _forward_returns(prices: pd.DataFrame, q_dates: list[pd.Timestamp], horizon_
     dataset_end = prices.index.max()
     buffer = pd.Timedelta(days=15)
     idx = prices.index
+
+    # anomaly days per ticker, for the window spanning check
+    anom_days: dict[str, list[pd.Timestamp]] = {}
+    if anomalies is not None and not anomalies.empty:
+        for tk, g in anomalies.groupby("ticker"):
+            anom_days[tk] = list(pd.to_datetime(g["date"]))
+
+    def _record(t, tk, reason, value):
+        if exclusions_out is not None:
+            exclusions_out.append({"date": pd.Timestamp(t), "ticker": tk,
+                                   "horizon_q": horizon_q, "reason": reason,
+                                   "value": float(value) if np.isfinite(value) else None})
 
     out = pd.DataFrame(index=q_dates, columns=prices.columns, dtype=float)
     for t in q_dates:
@@ -233,9 +290,25 @@ def _forward_returns(prices: pd.DataFrame, q_dates: list[pd.Timestamp], horizon_
             ret = p_fut / p_now - 1.0
         else:
             ret = pd.Series(np.nan, index=prices.columns)
+        window_end = tgt_date if tgt_date is not None else dataset_end
+        excluded: set[str] = set()
+        # Splice gate: null any window spanning an anomaly day for that ticker.
+        for tk, days in anom_days.items():
+            if tk not in ret.index or pd.isna(ret[tk]):
+                continue
+            if any(t < d <= window_end for d in days):
+                _record(t, tk, "splice_window", ret[tk])
+                ret[tk] = np.nan
+                excluded.add(tk)
+        # Backstop: physically implausible windows the daily gate missed.
+        too_big = ret[ret.abs() > config.MAX_ABS_FORWARD_RETURN]
+        for tk, v in too_big.items():
+            _record(t, tk, "extreme_return", v)
+            ret[tk] = np.nan
+            excluded.add(tk)
         # Delisting fill: name dead before horizon end and after t -> terminal.
         for tk in prices.columns:
-            if pd.notna(ret[tk]):
+            if pd.notna(ret[tk]) or tk in excluded:
                 continue
             lv = last_valid[tk]
             if lv is None or pd.isna(p_now[tk]):
@@ -257,12 +330,15 @@ def build_panel(
     membership: pd.DataFrame,
     short_interest: pd.Series | None = None,
     estimate_ts: dict[str, pd.DataFrame] | None = None,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Assemble the long panel of factors + forward relative returns.
 
     membership: long frame [date, ticker, gics_sector] (point in time).
-    Returns columns: date, ticker, gics_sector, <active factors>,
-    short_pct_float, fwd_ret_<h>q, fwd_rel_ret_<h>q, delisted.
+    Returns ``(panel, exclusions)``:
+      * panel columns: date, ticker, gics_sector, <active factors>,
+        short_pct_float, fund_as_of, fwd_ret_<h>q, fwd_rel_ret_<h>q, delisted;
+      * exclusions: the data integrity report — one row per label excluded by
+        the splice gate ([date, ticker, horizon_q, reason, value]).
     """
     q_dates = _quarter_end_dates(prices)
     # Only score dates where at least the shortest horizon's future exists OR
@@ -274,8 +350,12 @@ def build_panel(
     pf = _price_factor_panels(prices)
     pf_q = {name: _asof_sample(panel, q_dates) for name, panel in pf.items()}
 
-    # --- forward returns per horizon (delisting aware) ---
-    fwd = {h: _forward_returns(prices, q_dates, h) for h in config.HORIZONS_Q}
+    # --- forward returns per horizon (delisting aware, splice gated) ---
+    anomalies = detect_price_anomalies(prices)
+    label_exclusions: list = []
+    fwd = {h: _forward_returns(prices, q_dates, h, anomalies=anomalies,
+                               exclusions_out=label_exclusions)
+           for h in config.HORIZONS_Q}
 
     # --- fundamental factor time series per ticker ---
     fund_ts: dict[str, pd.DataFrame] = {}
@@ -321,6 +401,8 @@ def build_panel(
                 avail = ts[ts.index <= t]
                 if not avail.empty:
                     fr = avail.iloc[-1]
+            # when the statement used at t became public (for the drill down)
+            rec["fund_as_of"] = pd.Timestamp(fr.name) if fr is not None else pd.NaT
             for name in price_free_fund:
                 rec[name] = float(fr[name]) if (fr is not None and pd.notna(fr.get(name))) else np.nan
             # price based valuation ratios (need as of price x shares)
@@ -346,8 +428,10 @@ def build_panel(
             records.append(rec)
 
     panel = pd.DataFrame.from_records(records)
+    exclusions = pd.DataFrame(label_exclusions,
+                              columns=["date", "ticker", "horizon_q", "reason", "value"])
     if panel.empty:
-        return panel
+        return panel, exclusions
 
     # --- sector relative labels: stock fwd minus sector peer median ---
     for h in config.HORIZONS_Q:
@@ -355,9 +439,10 @@ def build_panel(
         med = panel.groupby(["date", "gics_sector"])[col].transform("median")
         panel[f"fwd_rel_ret_{h}q"] = panel[col] - med
 
-    logger.info("Panel built: %d rows, %d delisted carried labels",
-                len(panel), int(panel["delisted"].sum()))
-    return panel
+    logger.info("Panel built: %d rows, %d delisted carried labels, %d labels excluded "
+                "by the data integrity gate",
+                len(panel), int(panel["delisted"].sum()), len(exclusions))
+    return panel, exclusions
 
 
 # =============================================================================

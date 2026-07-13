@@ -44,8 +44,8 @@ def _setup_logging(verbose: bool) -> None:
 # =============================================================================
 # Panel construction
 # =============================================================================
-def build_real_panel(args) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Return (panel, prices) from live data."""
+def build_real_panel(args) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Return (panel, prices, exclusions) from live data."""
     from data_loader import download_prices, fetch_fundamentals, load_short_interest
     from feature_engine import build_panel, _quarter_end_dates
     from universe import all_known_tickers, membership_panel
@@ -80,14 +80,16 @@ def build_real_panel(args) -> tuple[pd.DataFrame, pd.DataFrame]:
             logger.warning("Estimate factors requested but unavailable (%s); dropping them", exc)
 
     logger.info("=== STEP 5: panel assembly ===")
-    panel = build_panel(prices, bundles, mem, short_interest=short_int, estimate_ts=estimate_ts)
-    return panel, prices
+    panel, exclusions = build_panel(prices, bundles, mem, short_interest=short_int,
+                                    estimate_ts=estimate_ts)
+    return panel, prices, exclusions
 
 
-def build_synth_panel(args) -> tuple[pd.DataFrame, None]:
+def build_synth_panel(args) -> tuple[pd.DataFrame, None, pd.DataFrame]:
     from diagnostics.synth import make_synthetic_panel
     logger.info("=== Synthetic panel (deterministic, no network) ===")
-    return make_synthetic_panel(), None
+    empty_exclusions = pd.DataFrame(columns=["date", "ticker", "horizon_q", "reason", "value"])
+    return make_synthetic_panel(), None, empty_exclusions
 
 
 # =============================================================================
@@ -100,14 +102,19 @@ def run(args) -> None:
 
     from feature_engine import neutralize_factors
     from model import equal_weight_score, learned_weight_score
-    from validate import (summarize_ic, decile_analysis, calibration_table,
-                          factor_ic_table, compare_models)
-    from backtest import backtest_long_only_avoid_worst, backtest_long_short
+    from validate import (summarize_ic, decile_analysis, calibration_fm,
+                          decile_event_study, coverage_eras, ic_summary_by_era,
+                          ic_by_year, paired_ic_test, factor_ic_table, compare_models)
+    from backtest import (backtest_long_only_avoid_worst, backtest_hold_all,
+                          benchmark_result, relative_metrics,
+                          segment_by_year, segment_by_regime)
+    from simulate import simulate_ima_portfolios
     from diagnostics.run_all import run_all as run_diagnostics
     import webapp_export
     from universe import has_real_membership
 
-    panel, prices = build_synth_panel(args) if args.synthetic else build_real_panel(args)
+    panel, prices, exclusions = (build_synth_panel(args) if args.synthetic
+                                 else build_real_panel(args))
     if panel.empty:
         raise SystemExit("Panel is empty — check data sources / universe.")
 
@@ -124,21 +131,20 @@ def run(args) -> None:
         panel = learned_weight_score(panel, horizon_q=horizon)
 
     # Decide the default score HONESTLY: the equal weight baseline stays the
-    # default unless the learned model STRICTLY beats it out of sample (spec:
-    # "never present fitted then ignored weights; if it doesn't beat baseline
-    # OOS, keep the baseline as default").
+    # default unless the learned model beats it out of sample by a PAIRED
+    # Newey West t test (a point estimate edge is noise, not a win).
     comparison = compare_models(panel, horizon)
     score_col = "score_ew"
+    promotion = None
     if config.USE_LEARNED_WEIGHTS and "score_ml" in panel.columns and panel["score_ml"].notna().any():
-        ic_ew = summarize_ic(panel, "score_ew", horizon).mean_ic
-        ic_ml = summarize_ic(panel, "score_ml", horizon).mean_ic
-        if pd.notna(ic_ml) and pd.notna(ic_ew) and ic_ml > ic_ew:
+        promotion = paired_ic_test(panel, "score_ml", "score_ew", horizon)
+        if promotion["promote"]:
             score_col = "score_ml"
-            logger.info("Learned model BEATS baseline OOS (IC %.4f > %.4f): using it as default",
-                        ic_ml, ic_ew)
+            logger.info("Learned model PROMOTED (paired IC diff %+.4f, t=%+.2f >= %.1f)",
+                        promotion["mean_diff"], promotion["t_stat"], config.PROMOTION_MIN_T)
         else:
-            logger.info("Learned model does NOT beat baseline OOS (IC %.4f <= %.4f): keeping baseline default",
-                        ic_ml if pd.notna(ic_ml) else float('nan'), ic_ew)
+            logger.info("Learned model NOT promoted (paired IC diff %+.4f, t=%+.2f < %.1f): baseline stays default",
+                        promotion["mean_diff"], promotion["t_stat"], config.PROMOTION_MIN_T)
     decile_col = "decile_ml" if score_col == "score_ml" else "decile_ew"
 
     # --- torpedo screener (absolute, whole universe risk view) ---
@@ -151,7 +157,11 @@ def run(args) -> None:
     ic_summaries = {h: summarize_ic(panel, score_col, h) for h in config.HORIZONS_Q}
     decile_summaries = {h: decile_analysis(panel, decile_col, h) for h in config.HORIZONS_Q}
     factor_ic = factor_ic_table(panel, horizon)
-    calibration = calibration_table(panel, score_col, horizon)
+    calibration = calibration_fm(panel, score_col, horizon)
+    event_study = decile_event_study(panel, decile_col)
+    eras = coverage_eras(panel)
+    era_ic = ic_summary_by_era(panel, score_col, horizon, eras)
+    yearly_ic = ic_by_year(panel, score_col, horizon)
 
     # --- backtest ---
     logger.info("=== Backtest ===")
@@ -162,9 +172,28 @@ def run(args) -> None:
             bench_px = download_benchmark(years=config.PRICE_HISTORY_YEARS, force_refresh=args.refresh)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Benchmark fetch failed: %s", exc)
-    lo = backtest_long_only_avoid_worst(panel, decile_col, bench_px if bench_px is not None else pd.Series(dtype=float),
-                                        cost_bps=args.cost_bps)
-    ls = backtest_long_short(panel, decile_col, cost_bps=args.cost_bps)
+    bench_px = bench_px if bench_px is not None else pd.Series(dtype=float)
+    hold_all = backtest_hold_all(panel, decile_col, bench_px, cost_bps=args.cost_bps)
+    avoid = backtest_long_only_avoid_worst(panel, decile_col, bench_px, cost_bps=args.cost_bps)
+    # The screen's value added is avoid-worst MINUS hold-all (equal weight vs
+    # equal weight); IJR is context, never the yardstick for the screen.
+    avoid.metrics.update(relative_metrics(avoid, hold_all))
+    dates_all = sorted(panel["date"].unique())
+    bench = benchmark_result(bench_px, dates_all)
+    sleeves = {"hold_all": hold_all, "avoid_worst": avoid}
+    seg_year = segment_by_year({**sleeves, "benchmark": bench})
+    seg_regime = segment_by_regime(sleeves, bench.returns)
+
+    # --- IMA Monte Carlo (replaces the long/short sleeve) ---
+    logger.info("=== IMA Monte Carlo simulation (20 name portfolios per screen tier) ===")
+    mc = simulate_ima_portfolios(panel, decile_col)
+
+    # --- analyst overrides (annotations; never touch the score) ---
+    from overrides import load_overrides, active_overrides, score_overrides
+    overrides = load_overrides()
+    latest_dt = panel["date"].max()
+    ov_active = active_overrides(overrides, latest_dt)
+    ov_scoreboard = score_overrides(overrides, panel)
 
     # --- diagnostics gate ---
     logger.info("=== Diagnostics ===")
@@ -176,11 +205,14 @@ def run(args) -> None:
     if not args.no_webapp:
         logger.info("=== Webapp export ===")
         webapp_export.export_all(
-            latest=latest, score_col=score_col, decile_col=decile_col,
+            panel=panel, latest=latest, score_col=score_col, decile_col=decile_col,
             factor_ic=factor_ic, horizon_q=horizon,
             ic_summaries=ic_summaries, decile_summaries=decile_summaries,
-            calibration=calibration, comparison=comparison,
-            backtests={"long_only": lo, "long_short": ls},
+            calibration=calibration, comparison=comparison, promotion=promotion,
+            event_study=event_study, eras=eras, era_ic=era_ic, yearly_ic=yearly_ic,
+            backtests={"hold_all": hold_all, "avoid_worst": avoid, "benchmark": bench},
+            seg_year=seg_year, seg_regime=seg_regime, mc=mc, exclusions=exclusions,
+            ov_active=ov_active, ov_scoreboard=ov_scoreboard,
             meta_kwargs=dict(
                 universe_size=int(latest["ticker"].nunique()),
                 n_sectors=int(latest["gics_sector"].nunique()),
@@ -190,29 +222,43 @@ def run(args) -> None:
                 diagnostics=diag, n_cross_sections=int(panel["date"].nunique()),
                 cost_bps=args.cost_bps, panel_rows=int(len(panel)),
                 n_delisted=int(panel["delisted"].sum()) if "delisted" in panel else 0,
+                exclusions_summary={
+                    "n_labels_excluded": int(len(exclusions)),
+                    "n_tickers": int(exclusions["ticker"].nunique()) if len(exclusions) else 0,
+                    "reasons": exclusions["reason"].value_counts().to_dict() if len(exclusions) else {},
+                },
             ),
         )
 
     _print_summary(panel, score_col, decile_col, latest, latest_date, ic_summaries,
-                   decile_summaries, comparison, lo, ls, diag, horizon, time.time() - t0)
+                   decile_summaries, comparison, era_ic, hold_all, avoid, bench, mc,
+                   exclusions, diag, horizon, time.time() - t0)
 
 
 # =============================================================================
 # Terminal summary
 # =============================================================================
 def _print_summary(panel, score_col, decile_col, latest, latest_date, ic_summaries,
-                   decile_summaries, comparison, lo, ls, diag, horizon, secs) -> None:
+                   decile_summaries, comparison, era_ic, hold_all, avoid, bench, mc,
+                   exclusions, diag, horizon, secs) -> None:
     line = "=" * 76
     print(f"\n{line}\nRELATIVE SELL MODEL — sector neutral relative underperformance ranking")
     print(f"{line}")
     print(f"Universe: {latest['ticker'].nunique()} names, {latest['gics_sector'].nunique()} sectors "
           f"| {panel['date'].nunique()} quarterly cross sections | default score = {score_col}")
-    print(f"Latest cross section: {pd.Timestamp(latest_date).date()}  (horizon = {horizon}Q forward relative return)\n")
+    print(f"Latest cross section: {pd.Timestamp(latest_date).date()}  (horizon = {horizon}Q forward relative return)")
+    if len(exclusions):
+        print(f"DATA INTEGRITY: {len(exclusions)} forward return labels EXCLUDED "
+              f"({exclusions['ticker'].nunique()} tickers; splice/extreme gate)")
+    print()
 
     s = ic_summaries[horizon]
-    print(f"VALIDATION  (sector neutral IC, Fama MacBeth + Newey West 5 lag)")
+    print(f"VALIDATION  (sector neutral IC, Fama MacBeth + Newey West h-1 lag)")
     print(f"  mean IC = {s.mean_ic:+.4f}   t = {s.t_stat:+.2f}   IR = {s.ir:+.2f}   "
           f"hit = {s.hit_rate*100:.0f}%   over {s.n_periods} periods")
+    if era_ic is not None and not era_ic.empty:
+        for _, r in era_ic.iterrows():
+            print(f"    {r['era']:<14} IC={r['mean_ic']:+.4f} t={r['t_stat']:+.2f} over {r['n_periods']} qtrs")
     d = decile_summaries[horizon]
     print(f"  decile spread (best worst) = {d.spread_mean:+.4f}  t = {d.spread_tstat:+.2f}  "
           f"monotonicity rho = {d.monotonicity_rho:+.2f}")
@@ -221,11 +267,27 @@ def _print_summary(panel, score_col, decile_col, latest, latest_date, ic_summari
         for _, r in comparison.iterrows():
             print(f"    {r['model']:<16} IC={r['mean_ic']:+.4f} t={r['t_stat']:+.2f} IR={r['ir']:+.2f}")
 
-    print(f"\nBACKTEST  (quarterly rebalance, {ls.metrics.get('avg_turnover', 0)*100:.0f}% L/S turnover)")
-    for res in (lo, ls):
+    print(f"\nBACKTEST  (quarterly rebalance, equal weight; screen judged vs hold-all, IJR = context)")
+    for res in (hold_all, avoid, bench):
         m = res.metrics
-        print(f"  {res.name:<32} CAGR={m.get('cagr', float('nan'))*100:+.1f}%  "
+        if not m:
+            continue
+        print(f"  {res.name:<36} CAGR={m.get('cagr', float('nan'))*100:+.1f}%  "
               f"Sharpe={m.get('sharpe', float('nan')):+.2f}  maxDD={m.get('max_drawdown', float('nan'))*100:.1f}%")
+    x = avoid.metrics.get("excess_cagr_vs_base")
+    if x is not None:
+        print(f"  screen value added (avoid worst − hold all): {x*100:+.2f}%/yr  "
+              f"IR={avoid.metrics.get('ir_vs_base', float('nan')):+.2f}  "
+              f"hit={avoid.metrics.get('hit_rate_vs_base', float('nan'))*100:.0f}%")
+
+    if mc and mc.get("tiers"):
+        print(f"\nIMA MONTE CARLO  ({mc['n_trials']} random {mc['n_names']} name portfolios per tier)")
+        for tier, t in mc["tiers"].items():
+            c = t["cagr"]
+            pb = t.get("prob_beat_full_median")
+            print(f"  {t['label']:<32} median CAGR={c['p50']*100:+.1f}%  "
+                  f"[p5 {c['p5']*100:+.1f}%, p95 {c['p95']*100:+.1f}%]"
+                  + (f"  P(beat unscreened median)={pb*100:.0f}%" if pb is not None else ""))
 
     print(f"\nDIAGNOSTICS: {'ALL PASS' if diag['all_passed'] else 'FAILURES PRESENT'}  "
           f"(placebo IC={diag['placebo']['placebo_ic_mean']:+.3f} vs real {diag['placebo']['real_ic']:+.3f})")

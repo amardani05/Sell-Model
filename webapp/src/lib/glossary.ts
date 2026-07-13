@@ -101,7 +101,47 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   },
   calibration: {
     label: "calibration",
-    def: "Whether higher scores really did earn worse relative returns, checked by bucketing names by score and reading off the average outcome.",
+    def: "Whether higher scores really did earn worse relative returns. Score buckets are cut within each quarter, then the per bucket outcomes are averaged across quarters with error bars, so no single period or outlier decides the curve.",
+  },
+  reliability: {
+    label: "reliability curve",
+    def: "For each score bucket, the fraction of names that actually underperformed their sector median. It turns the score into a probability statement: decile 10 names trailed their sector X percent of the time.",
+  },
+  eventstudy: {
+    label: "event study",
+    def: "Track what happened in the quarters AFTER a name entered the worst decile: its average sector relative return 1, 2, 3, 4 quarters later. The clearest picture of what a flag has historically meant.",
+  },
+  standarderror: {
+    label: "standard error",
+    def: "How uncertain an average is. A band of about two standard errors around a point is the range where the true value plausibly sits; if the band includes zero, the result may be noise.",
+  },
+  winsorizedmean: {
+    label: "winsorized mean",
+    def: "An average computed after clipping the most extreme values (here the top and bottom 1 percent). If the plain mean and the winsorized mean disagree sharply, a few outliers were carrying the plain mean.",
+  },
+  coveragera: {
+    label: "coverage era",
+    def: "The data source only provides recent fundamentals, so older cross sections were scored by the two price factors alone. History splits into a price only era and a full factor era, and stats are reported per era so a 2 factor past is never passed off as evidence about the 15 factor model.",
+  },
+  montecarlo: {
+    label: "Monte Carlo simulation",
+    def: "Instead of one simulated portfolio (which is mostly luck at 20 names), draw thousands of random portfolios under each screening rule and compare the whole distributions of outcomes.",
+  },
+  trackingerror: {
+    label: "tracking error",
+    def: "The annualized volatility of the return DIFFERENCE between a strategy and its base portfolio. Together with the excess return it gives the information ratio of the screen itself.",
+  },
+  splice: {
+    label: "splice artifact",
+    def: "A data error where two different securities are joined under one ticker (for example a bankruptcy emergence), creating a fake giant one day return. Flagged windows are excluded from labels and logged, never used.",
+  },
+  transitionmatrix: {
+    label: "transition matrix",
+    def: "For names in decile X this quarter, where did they land next quarter? Row 10 shows how sticky the sell flag is: a flag that immediately melts away means something different from one that persists.",
+  },
+  baserate: {
+    label: "base rate",
+    def: "The historical frequency of an outcome, for example how often decile 10 names went on to trail their sector. Research notes should cite base rates only once there is enough full factor history to estimate them honestly.",
   },
   winsorize: {
     label: "winsorize",

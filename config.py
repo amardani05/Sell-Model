@@ -246,10 +246,61 @@ FACTSET_API_KEY: str | None = os.getenv("FACTSET_API_KEY") or None
 # Backtest / costs
 # =============================================================================
 COST_BPS: float = 10.0        # round trip transaction cost per unit turnover, bps
-LONG_SHORT_GROSS: float = 1.0 # gross exposure per side for the L/S sleeve
 # A delisted name's forward total return floors here unless a recovery value is
 # known. -1.0 = went to zero (the strongest possible underperformer).
 DELISTING_TERMINAL_RETURN: float = -1.0
+
+# =============================================================================
+# Data integrity gate
+# =============================================================================
+# A single day price ratio beyond these bounds is treated as a series splice /
+# corporate action artifact, not a real return. Canonical case: CHRD, where
+# yfinance splices pre Chapter 11 Oasis Petroleum ($0.07) onto the post
+# emergence equity ($19.93) in Nov 2020 — a fake +28,000% day. Splits are
+# already adjusted (auto_adjust=True), so genuine moves this size are
+# vanishingly rare among index members. Any forward return whose window spans
+# a flagged day is EXCLUDED from labels and logged, never silently kept.
+MAX_DAILY_PRICE_RATIO: float = 4.0    # > 4x up in a single day  -> splice suspect
+MIN_DAILY_PRICE_RATIO: float = 0.25   # < 0.25x down in a single day -> splice suspect
+# Backstop: a window return beyond this magnitude is excluded and logged
+# (reason "extreme_return") even if the daily gate missed the cause. This is a
+# DATA ERROR net, not tail truncation: real small cap moonshots reach ~25x over
+# two quarters (MARA Sep-2020..Mar-2021 ~26x, GME ~19x, SM ~11x — all genuine
+# and all kept), and deleting real right tail events would flatter the model by
+# erasing its worst potential misses. Skew handling for DISPLAY belongs to the
+# winsorized/median statistics, never to label exclusion.
+MAX_ABS_FORWARD_RETURN: float = 50.0  # 50x per horizon window = corruption
+# Winsorization applied to LABELS for DISPLAY statistics only (calibration and
+# decile means). Rank statistics (IC) are winsorization invariant; backtests
+# always use raw returns.
+LABEL_WINSOR_PCT: float = 0.01
+
+# =============================================================================
+# Coverage eras
+# =============================================================================
+# yfinance fundamentals reach back only ~4-5 quarters, so historical cross
+# sections are scored by the price factors alone. Cross sections whose average
+# factor coverage is below this threshold are labeled the "price-only era" and
+# every validation stat is reported per era, so a 2 factor history is never
+# passed off as evidence about the 15 factor composite.
+ERA_MIN_AVG_FACTORS: float = 4.0
+
+# =============================================================================
+# IMA Monte Carlo simulation (replaces the long/short sleeve)
+# =============================================================================
+# IMA holds ~20 names picked from the S&P 600 (kept if they graduate to the
+# 400). The simulator draws many random 20 name portfolios from the universe
+# with and without the sell screen applied and compares the DISTRIBUTIONS —
+# the honest way to measure what the screen does for a concentrated picker,
+# since any single 20 name path is dominated by luck.
+MC_PORTFOLIO_SIZE: int = 20
+MC_N_TRIALS: int = 1000
+MC_SEED: int = 42
+
+# Learned model promotion: the learned scorer becomes the default only if its
+# per date IC beats the baseline's by a PAIRED Newey West t stat of at least
+# this (a point estimate edge of +0.001 is noise, not a win).
+PROMOTION_MIN_T: float = 2.0
 
 # =============================================================================
 # Data fetch / cache knobs
@@ -286,6 +337,12 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # Membership store (point in time) + current fallback
 SP600_MEMBERSHIP_CSV: Path = DATA_DIR / "sp600_membership.csv"
 SP600_FALLBACK_CSV: Path = DATA_DIR / "sp600_fallback.csv"
+
+# Analyst override log (append only; see docs/override-layer-design.md).
+# Overrides are ANNOTATIONS — they never touch the score — and are scored
+# quarterly against realized relative returns.
+OVERRIDES_CSV: Path = DATA_DIR / "overrides.csv"
+OVERRIDE_MAX_AGE_QUARTERS: int = 2   # default expiry horizon if none supplied
 
 # Caches
 PRICE_CACHE: Path = DATA_DIR / "price_cache.parquet"

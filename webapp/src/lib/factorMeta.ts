@@ -1,0 +1,127 @@
+// Human readable metadata for every factor: what it measures, the exact
+// formula the pipeline computes, and which direction is the red flag.
+// This is the transparency contract behind the per name drill down: an analyst
+// must be able to answer "why is this name flagged" without reading Python.
+
+export interface FactorMeta {
+  label: string;          // short display name
+  family: string;
+  formula: string;        // the actual computation, plain notation
+  redFlag: string;        // which direction is unfavorable, in words
+  anomaly: string;        // the documented effect behind it
+}
+
+export const FACTOR_META: Record<string, FactorMeta> = {
+  pe_ratio: {
+    label: "P/E (trailing)", family: "Valuation",
+    formula: "market cap ÷ trailing 12m net income (only when income > 0)",
+    redFlag: "High P/E vs sector peers — priced richly",
+    anomaly: "Value premium (Fama–French HML)",
+  },
+  ev_to_ebitda: {
+    label: "EV / EBITDA", family: "Valuation",
+    formula: "(market cap + total debt − cash) ÷ trailing 12m EBITDA",
+    redFlag: "High EV/EBITDA vs sector peers — priced richly",
+    anomaly: "Value premium (enterprise value form)",
+  },
+  ps_ratio: {
+    label: "Price / Sales", family: "Valuation",
+    formula: "market cap ÷ trailing 12m revenue",
+    redFlag: "High P/S vs sector peers — priced richly",
+    anomaly: "Value premium (works when earnings are noisy)",
+  },
+  fcf_yield: {
+    label: "FCF yield", family: "Valuation",
+    formula: "(operating cash flow − capex, trailing 12m) ÷ enterprise value",
+    redFlag: "LOW free cash flow yield vs sector peers",
+    anomaly: "Cash flow yield / value premium",
+  },
+  mom_12_1: {
+    label: "12−1 momentum", family: "Momentum",
+    formula: "total return from 12 months ago to 1 month ago (skips the last month)",
+    redFlag: "LOW momentum vs sector peers — a persistent laggard",
+    anomaly: "Jegadeesh–Titman momentum (losers keep losing)",
+  },
+  reversal_1m: {
+    label: "1m reversal", family: "Momentum",
+    formula: "total return over the most recent ~21 trading days",
+    redFlag: "HIGH last month return — recent pops tend to give some back",
+    anomaly: "Short term reversal effect",
+  },
+  roe: {
+    label: "ROE", family: "Quality",
+    formula: "trailing 12m net income ÷ shareholders' equity",
+    redFlag: "LOW return on equity vs sector peers",
+    anomaly: "Profitability premium (Novy-Marx, RMW)",
+  },
+  roa: {
+    label: "ROA", family: "Quality",
+    formula: "trailing 12m net income ÷ total assets",
+    redFlag: "LOW return on assets vs sector peers",
+    anomaly: "Profitability premium",
+  },
+  gross_margin: {
+    label: "Gross margin", family: "Quality",
+    formula: "trailing 12m gross profit ÷ revenue",
+    redFlag: "LOW gross margin vs sector peers",
+    anomaly: "Gross profitability (Novy-Marx)",
+  },
+  fcf_margin: {
+    label: "FCF margin", family: "Quality",
+    formula: "trailing 12m free cash flow ÷ revenue",
+    redFlag: "LOW free cash flow margin vs sector peers",
+    anomaly: "Cash profitability",
+  },
+  roe_yoy: {
+    label: "ROE trend (YoY)", family: "Quality",
+    formula: "ROE this quarter − ROE four quarters ago",
+    redFlag: "DECLINING profitability year over year",
+    anomaly: "Deteriorating fundamentals precede underperformance",
+  },
+  gross_margin_yoy: {
+    label: "Gross margin trend (YoY)", family: "Quality",
+    formula: "gross margin this quarter − gross margin four quarters ago",
+    redFlag: "DECLINING gross margin year over year",
+    anomaly: "Margin erosion precedes underperformance",
+  },
+  asset_growth_yoy: {
+    label: "Asset growth (YoY)", family: "Investment",
+    formula: "total assets ÷ total assets four quarters ago − 1",
+    redFlag: "HIGH asset growth — aggressive expansion / empire building",
+    anomaly: "Asset growth anomaly (Cooper–Gulen–Schill)",
+  },
+  net_issuance_yoy: {
+    label: "Net share issuance (YoY)", family: "Investment",
+    formula: "shares outstanding ÷ shares four quarters ago − 1",
+    redFlag: "HIGH issuance — dilution of existing holders",
+    anomaly: "Net issuance anomaly (Daniel–Titman, Pontiff–Woodgate)",
+  },
+  accruals_ocf_ni: {
+    label: "Accruals (OCF/NI)", family: "Earnings Quality",
+    formula: "trailing 12m operating cash flow ÷ trailing 12m net income",
+    redFlag: "LOW OCF/NI — earnings not backed by cash (high accruals)",
+    anomaly: "Sloan (1996) accruals anomaly",
+  },
+  est_revision_3m: {
+    label: "Estimate revision (3m)", family: "Estimates",
+    formula: "3 month change in consensus forward EPS (gated source)",
+    redFlag: "DOWNWARD revisions",
+    anomaly: "Post revision drift",
+  },
+  sue: {
+    label: "SUE", family: "Estimates",
+    formula: "(actual EPS − consensus) ÷ std of surprises (gated source)",
+    redFlag: "LOW / negative earnings surprise",
+    anomaly: "Post earnings announcement drift",
+  },
+};
+
+// Family display order + colors shared with the Factor IC tab.
+export const FAMILY_COLOR: Record<string, string> = {
+  Valuation: "#4e79a7", Momentum: "#f28e2b", Quality: "#59a14f",
+  Investment: "#b07aa1", "Earnings Quality": "#e15759", Estimates: "#9c755f",
+};
+
+export function factorLabel(f: string): string {
+  return FACTOR_META[f]?.label ?? f;
+}

@@ -1,0 +1,234 @@
+# IC Improvement Roadmap — free data first, every paid dollar justified
+
+**Status: proposals for approval.** Nothing here is implemented. Each item says what
+it is, why it should raise the IC, what it costs (time/money), and what to read to
+understand it before green-lighting. Ordered so the free statistical power comes
+first and money is the *last* resort, per the project's constraint.
+
+---
+
+## 0. Diagnosis — why the IC is ~0 today
+
+The current composite has IC ≈ +0.017 (t ≈ 0.9). Decomposed, that's:
+
+1. **The history only tests 2 of 15 factors.** 30 of 31 scored quarters are
+   momentum + reversal (yfinance fundamentals reach ~4–5 quarters back). Of those
+   two, `reversal_1m` carries everything (IC +0.025) and `mom_12_1` is flat here.
+2. **33 quarterly cross sections is a tiny sample.** Even a genuinely good model
+   (true IC 0.04) would fail a t-test more often than not on 33 observations.
+   Statistical power, not just signal, is missing.
+3. **Construction leaks.** Equal weight over 15 correlated factors makes the
+   composite ~valuation-weighted (4 collinear valuation factors), thin-coverage
+   names get mechanically extreme scores, and the 600+400 union makes small caps
+   compete with mid caps inside one "peer" group.
+4. **Horizon mismatch.** Reversal is a ~1-month effect being sampled quarterly;
+   value/quality/accruals historically pay over 2–4 quarters. One horizon serves
+   neither.
+
+Fixing (2)–(4) is free. Fixing (1) is free too — that's the EDGAR project below.
+
+**Expectation setting (read this before anything else):** a *good* small-cap
+multifactor model earns a cross-sectional quarterly IC around **0.03–0.06**. The
+goal is a statistically demonstrable IC with a stable sign, not 0.15. The bridge
+from IC to portfolio value is Grinold & Kahn's *fundamental law of active
+management*: IR ≈ IC × √breadth (independent bets per year). That's why item 1.1
+(more cross sections) matters as much as any new factor: breadth is half the law.
+Reading: Grinold & Kahn, *Active Portfolio Management*, ch. 6 & 10.
+
+---
+
+## 1. Tier 0 — free statistical power, no new data (do these first)
+
+### 1.1 Monthly cross sections with overlapping labels
+Score every month-end instead of quarter-end (same price data, same factors),
+keeping the 1Q forward label. 33 observation dates become ~96. Labels overlap, so
+the Newey–West lag count rises to ~2 (already scales in `validate._nw_lags`).
+This is the single cheapest tripling of statistical power available, and it's the
+standard construction (Jegadeesh & Titman 1993 run overlapping portfolios).
+*Cost: small refactor of `_quarter_end_dates` → configurable frequency.*
+
+### 1.2 Family-balanced, re-standardized composite
+Average within each factor family first, then across families — otherwise the four
+collinear valuation factors carry ~4× the weight of accruals ("equal weight by
+factor" ≠ "equal weight by information"). Then z-score the composite within
+sector-date again and require a minimum factor count (e.g. ≥ 3), because the mean
+of 2 z-scores has ~√(15/2) times the σ of the mean of 15 — right now thin-coverage
+names get extreme deciles as a data artifact (measured corr(n_factors, |score|) =
+−0.13). *Cost: ~20 lines in `model.py`. Likely the largest free IC cleanup.*
+
+### 1.3 Rebalance after earnings season
+Quarter-end scoring uses the stalest possible fundamentals (right before the next
+print). Score ~3 weeks into the quarter instead, when most 10-Qs are filed. Free
+freshness; also matches IMA's meeting cadence better.
+
+### 1.4 Size-and-subindustry-aware neutralization
+The 600+400 union means a small-cap's "sector peers" include mid caps, so part of
+every z-score is just ranking size. Either neutralize within sector × index, or
+regress each factor on log-market-cap within sector and use residuals. Same
+technique fixes the UNFI problem (distributor z-scored against branded CPG): GICS
+industry-group (4-digit) neutralization where group sizes allow.
+*Reading: any factor-construction discussion of "purifying" exposures — e.g.
+Israel & Moskowitz on factor construction details mattering.*
+
+### 1.5 Horizon term structure per family
+Measure each factor's IC at 1M / 1Q / 2Q / 4Q. Expected result from the
+literature: reversal pays at 1M and is noise at 1Q; value/quality/accruals build
+toward 2–4Q. Then either run the model at the horizon where its families actually
+pay, or split into a fast sleeve and a slow sleeve. *Cost: pure analysis on
+existing data; would also make a strong dashboard chart ("IC decay curves").*
+
+### 1.6 Walk-forward IC-weighted blending (after 1.1 gives enough history)
+Replace equal family weights with weights ∝ trailing shrunk family IC (heavy
+shrinkage toward equal weight; strictly walk-forward). This is the disciplined
+version of "let winners carry more" without full ML. *Reading: Grinold & Kahn
+ch. 10 on combining signals; shrinkage intuition from James–Stein.*
+
+---
+
+## 2. Tier 1 — free data upgrades (the real unlock)
+
+### 2.1 SEC EDGAR XBRL fundamentals — THE project
+`https://data.sec.gov/api/xbrl/companyfacts/CIK##########.json` returns **every
+XBRL-tagged number a company ever filed**, quarterly, back to ~2009–2012 for most
+names, **with the filing date attached**. Free, official, rate-limited (10 req/s,
+set a User-Agent). This single source:
+
+- extends every fundamental factor from ~5 quarters to 10+ **years** → the
+  full-factor era goes from 1 scored quarter to 40+;
+- replaces the flat 60-day reporting lag with the **actual filing date** (true
+  point-in-time knowledge, the same property you'd pay Compustat PIT for);
+- unlocks the Piper-style factors we currently can't build: change in
+  receivables/DSO, change in days payable, revenue variance, EPS variance,
+  depreciable-life change, plus Piotroski F-score inputs and
+  Ohlson O-score / Altman Z-score distress measures.
+
+Effort is real but bounded: the ugly part is us-gaap tag aliasing (same problem
+`feature_engine.get_field` already solves for yfinance) and handling amended
+filings (use the first-filed value, never the restated one). ~2–3 working
+sessions. **This is the highest-value item in the whole document.**
+
+### 2.2 New price-based factors (zero new data — the price cache already has them)
+Documented cross-sectional predictors computable from existing prices + volume:
+
+| Factor | Red flag | Reference |
+|---|---|---|
+| 52-week-high proximity | far below the high | George & Hwang (2004) |
+| Idiosyncratic volatility | high IVOL | Ang, Hodrick, Xing, Zhang (2006) |
+| MAX (biggest daily gain last month) | high (lottery demand) | Bali, Cakici, Whitelaw (2011) |
+| Amihud illiquidity | high | Amihud (2002) |
+| Market beta | high (betting against beta) | Frazzini & Pedersen (2014) |
+| Residual momentum | low | Blitz, Huij, Martens (2011) |
+
+These deepen the *price-only era* too — the part of history we can already
+validate. IVOL + MAX are natural "torpedo" inputs as well.
+
+### 2.3 FINRA short interest history
+Bi-monthly consolidated files, free, already stubbed
+(`config.FINRA_SHORT_INTEREST_URL`). Turns `short_pct_float` from a
+current-snapshot metadata column into a real historical factor (level, change,
+days-to-cover). *Reading: Boehmer, Jones & Zhang (2008) — short sellers are
+informed.*
+
+### 2.4 EDGAR Form 4 — insider trading
+Net insider buying/selling, free from EDGAR. The refinement that matters:
+separate routine trades (scheduled sellers) from opportunistic ones. *Reading:
+Cohen, Malloy & Pomorski (2012), "Decoding Inside Information."*
+
+### 2.5 Price-based earnings surprise (poor man's SUE)
+Without estimates data, the market's own reaction is the surprise proxy: the
+abnormal return on the earnings announcement day, which then drifts (PEAD).
+Earnings dates come free from EDGAR 8-K filings or the yfinance calendar. This is
+the closest free substitute for the estimates factors that are currently gated
+off. *Reading: Bernard & Thomas (1989) on post-earnings-announcement drift.*
+
+### 2.6 Point-in-time membership via ETF holdings archives
+Clever free proxy: iShares publishes IJR / IJH holdings files; archived copies
+(and the Wayback Machine) reconstruct historical index membership well enough to
+kill most survivorship bias without buying an index-constituency feed. Not
+perfect (rebalance-day gaps), but honest and free. Delisting *reasons* still need
+hand-curation for the terminal-return fix.
+
+### 2.7 13F institutional holdings (lower priority)
+Ownership breadth changes predict returns (Chen, Hong, Stein 2002), free from
+EDGAR, but the parsing lift is heavy relative to expected IC. Do last.
+
+---
+
+## 3. Tier 2 — methodology upgrades once the data exists
+
+- **Interactions**: value conditional on quality (avoids value traps — the
+  Piotroski logic), momentum conditional on IVOL, distress × valuation. The
+  learned model can find these only after EDGAR gives it enough history; with
+  n = 33 it cannot and should not.
+- **Learned model upgrades**: rank-transformed labels, gradient boosting with
+  monotonicity constraints (each factor constrained to its documented red-flag
+  direction — interpretability preserved), expanding-window only. Promotion gate
+  (paired t ≥ 2) already exists.
+- **Multiple-testing discipline**: once we're trying 20+ factors, a t of 2.0 is
+  no longer the bar. *Reading: Harvey, Liu & Zhu (2016), "…and the Cross-Section
+  of Expected Returns" (argue t > 3 for new factors); López de Prado's deflated
+  Sharpe ratio.* The Monte Carlo null-distribution harness (random sign-consistent
+  composites) is the practical in-repo version.
+- **Regime conditioning**: credit spreads / realized vol (free from FRED) as
+  state variables for *when* the sell signal is trusted — only after the
+  unconditional signal exists.
+
+## 4. What the framework is structurally missing (honest list)
+
+1. **A risk model.** No factor-exposure accounting (size/beta/industry) when
+   judging the screen or building sleeves. Fine at current scale; required before
+   anyone trades size on this.
+2. **Estimates/revisions.** The one input free data genuinely cannot replicate
+   (2.5 is a partial proxy). Also the historically strongest sell-side signal
+   family for small caps.
+3. **Capacity/liquidity awareness** — irrelevant for IMA's size, worth a line in
+   the methodology tab.
+4. **Event awareness** — the model scores through earnings dates blindly; a name
+   flagged the day before a print is a different proposition than one flagged the
+   day after.
+
+---
+
+## 5. Paid data — maximizing every dollar, in order
+
+**Rule: don't pay for anything until EDGAR (2.1) is built and the Tier 0 items
+are in.** Otherwise you're paying to widen a pipe that's leaking upstream.
+
+**Step 0 — check WRDS access before spending anything.** UIUC (Gies) subscribes
+to WRDS; students in many programs can get accounts. WRDS = CRSP
+(survivorship-free prices, **delisting returns with reason codes** — exactly what
+`DELISTING_TERMINAL_RETURN` needs), Compustat (point-in-time fundamentals), IBES
+(estimate revisions — the unbuyable-on-a-budget dataset), and historical index
+constituents. That is the entire professional research stack for **$0**. License
+is research-only (no redistribution / no live-site data), so the public dashboard
+would still run on EDGAR — use WRDS for validation-grade history and the paper.
+
+If paying (personal licenses, per month, ~2026 pricing):
+
+| Rank | Vendor | ~$ | What the dollar buys | Verdict |
+|---|---|---|---|---|
+| 1 | **Sharadar via Nasdaq Data Link** (SF1 fundamentals + SEP prices bundle) | ~$110 | 20+ yrs as-reported fundamentals with report dates (ARQ = PIT-ish), **including delisted names**, ticker-event history, clean and documented | Best overall $/quality for exactly this project; the standard budget-quant stack |
+| 2 | **Norgate Data** (US Platinum) | ~$40 | Survivorship-free prices + **historical S&P 600/400 index constituency** | The cheapest clean solution to PIT membership specifically; pairs well with EDGAR fundamentals |
+| 3 | **Financial Modeling Prep** / **EODHD** | $30–60 | As-reported statements w/ filing dates, delisted coverage thinner than Sharadar | Acceptable fallback; verify small-cap coverage before paying a year |
+| 4 | **Tiingo** | $10–30 | Excellent clean prices, thin fundamentals | Price-feed redundancy, not a fundamentals answer |
+| — | **Zacks / estimate feeds** | $300+ | Revisions & surprise history | **Don't** — last dollar, not first; IBES via WRDS if the university grants it |
+| — | Real-time / streaming anything | any | Latency this model cannot use | Never — the model is quarterly |
+
+Suggested spend curve: **$0 now** (Tier 0 + EDGAR + FINRA + WRDS-if-available) →
+**~$40** (Norgate, when PIT membership becomes the binding constraint) →
+**~$110** (Sharadar, when EDGAR tag-mapping maintenance costs more time than
+$110/mo is worth) → estimates only after the model has demonstrated IC without
+them.
+
+---
+
+## 6. Recommended sequence
+
+1. **Tier 0, items 1.1–1.3** (monthly cross sections, family-balanced composite,
+   post-earnings rebalance) — one working session, immediate power.
+2. **EDGAR companyfacts loader (2.1)** — the big unlock; 2–3 sessions.
+3. **FINRA short interest (2.3) + price-based factors (2.2)** — one session.
+4. Re-validate everything: the era table will finally have a real full-factor
+   era; horizon term structure (1.5) decides the headline horizon.
+5. Then and only then: learned-model/interaction work (Tier 2), Norgate/Sharadar
+   as needed, estimates last.

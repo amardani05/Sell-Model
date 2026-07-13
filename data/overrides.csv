@@ -1,0 +1,19 @@
+# ---------------------------------------------------------------------------
+# ANALYST OVERRIDE LOG (append only) — see docs/override-layer-design.md
+# ---------------------------------------------------------------------------
+# Overrides are annotations: they NEVER change the model score or decile. They
+# are displayed next to it and scored quarterly (Validation tab scoreboard).
+#
+#   date        YYYY-MM-DD the override was filed
+#   ticker      uppercase symbol
+#   analyst     who filed it (attribution is non-negotiable)
+#   direction   less_risky | more_risky   (which way you disagree with the model)
+#   reason_code corporate_action | accounting_artifact | data_error |
+#               new_information | structural_peer_mismatch | thesis_disagreement
+#   factor      optional: the specific factor being disputed (e.g. accruals_ocf_ni)
+#   note        one or two sentences of WHY (what the model cannot see)
+#   expires     YYYY-MM-DD; blank = 2 quarters after filing
+#
+# The per-name drill down has a form that drafts a valid row for you.
+# ---------------------------------------------------------------------------
+date,ticker,analyst,direction,reason_code,factor,note,expires

@@ -103,23 +103,66 @@ export function MethodologyView({ meta }: Bundle) {
           exactly what makes it the absolute counterpart.
         </p>
 
+        <h3>Data integrity gate</h3>
+        <p>
+          Free price feeds occasionally join two different securities under one ticker (a bankruptcy emergence,
+          a ticker reuse), which manufactures a fake giant one day "return" that no investor earned. Any single
+          day price ratio beyond 4x (or below 0.25x) is flagged as a <Term id="splice">splice artifact</Term>,
+          every forward return window spanning that day is <strong>excluded from labels and logged</strong>
+          (see the Validation tab), and a backstop drops any window beyond 50x — a pure data error net, set far
+          above the largest genuine small cap moonshots (~26x over two quarters in 2020–21), which are
+          deliberately <em>kept</em>: deleting real right tail events would erase the model's worst potential
+          misses and flatter every statistic. Display statistics
+          additionally report <Term id="winsorizedmean">winsorized means</Term> and medians next to plain means,
+          because sector relative returns are right skewed and one lottery quarter can otherwise carry an
+          average. Rank statistics like the <Term id="ic">IC</Term> are unaffected by winsorization; backtests
+          always use raw (gated) returns.
+        </p>
+
+        <h3><Term id="coveragera">Coverage eras</Term></h3>
+        <p>
+          yfinance fundamentals reach back only ~4–5 quarters, so most historical cross sections were scored by
+          the two price factors alone while the latest ones use all {meta.n_factors}. Every headline statistic
+          is therefore split into a <em>price-only era</em> and a <em>full-factor era</em>: pooling them would
+          answer a mixed question, and the split makes it impossible to accidentally present a momentum/reversal
+          track record as evidence about the full composite.
+        </p>
+
         <h3>Validation (the whole point)</h3>
         <ul>
           <li><strong>Sector neutral <Term id="ic">IC</Term></strong>: minus the
             <Term id="spearman"> Spearman correlation</Term> between score and forward relative return per cross
             section, averaged <Term id="famamacbeth">Fama MacBeth</Term> with a <Term id="neweywest">Newey
-            West</Term> (5 lag) <Term id="tstat">t statistic</Term>. Mean IC, t, <Term id="ir">IR</Term> and the
-            IC time series are all reported.</li>
+            West</Term> <Term id="tstat">t statistic</Term> whose lag count scales with the label overlap
+            (horizon − 1 quarters, floored at one). Mean IC, t, <Term id="ir">IR</Term>, the IC time series,
+            an IC-by-year split, and the per era split are all reported.</li>
+          <li><strong><Term id="calibration">Calibration</Term>, the Fama MacBeth way</strong>: score buckets are
+            cut <em>within each quarter</em>, per bucket outcomes averaged across quarters with
+            <Term id="standarderror"> standard errors</Term>, and skew robust companions (median,
+            <Term id="winsorizedmean"> winsorized mean</Term>) shown alongside. The
+            <Term id="reliability"> reliability curve</Term> reports P(underperform sector) per bucket — the
+            score translated into a probability statement.</li>
+          <li><strong><Term id="eventstudy">Event study</Term></strong>: the average cumulative sector relative
+            return in the 1–4 quarters <em>after</em> a name sits in (or newly enters) the worst decile — the
+            most presentation ready read of what a flag has historically meant.</li>
           <li><strong><Term id="decile">Decile</Term> spread</strong> (best minus worst) per period and pooled,
             with a t statistic, plus a <Term id="monotonicity">monotonicity</Term> test across deciles.</li>
           <li><strong>Backtests</strong> (quarterly rebalance, {meta.cost_bps} <Term id="turnover">bps</Term>
-            cost, turnover reported): long only avoid the worst sector neutral decile versus
-            <Term id="benchmark"> {meta.benchmark}</Term>; and a sector neutral long short (long the best decile,
-            short the worst). Reported with <Term id="cagr">CAGR</Term>, volatility,
-            <Term id="sharpe"> Sharpe</Term>, <Term id="maxdd">max drawdown</Term> and
-            <Term id="hitrate"> hit rate</Term>.</li>
+            cost, turnover reported): the screen is judged as <em>avoid the worst decile</em> minus
+            <em> hold everything</em>, both equal weight — comparing an equal weight portfolio to the cap
+            weighted <Term id="benchmark">{meta.benchmark}</Term> would credit the model with the structural
+            equal weight effect, so {meta.benchmark} is shown as market context only. Calendar year and market
+            regime segments are reported so no single period can quietly carry the result.</li>
+          <li><strong><Term id="montecarlo">IMA Monte Carlo</Term></strong>: thousands of random 20 name
+            portfolios drawn per rebalance under each screening rule (no screen / drop decile 10 / drop 9–10 /
+            top half only), compared as full distributions — the honest way to measure what the screen does for
+            a concentrated picker. This replaced the earlier long/short sleeve, which was removed deliberately:
+            IMA is long only and a flat bps cost wildly understates real small cap borrow, so its Sharpe invited
+            objections rather than evidence.</li>
           <li><strong><Term id="walkforward">Walk forward</Term> only</strong>: features at t use data on or
-            before t; labels use returns in the window after t.</li>
+            before t; labels use returns in the window after t. The learned model is promoted over the equal
+            weight baseline only on a <strong>paired</strong> per date IC test (t ≥ 2), never on a point
+            estimate.</li>
         </ul>
         <div className="help-note">
           <strong>Why validation is the whole point.</strong> A ranking that looks reasonable can still be
@@ -131,6 +174,30 @@ export function MethodologyView({ meta }: Bundle) {
           feature that secretly peeks at the future, and a universe that quietly drops the losers. Passing all of
           them is what separates a real edge from a good looking chart.
         </div>
+
+        <h3>Per name transparency</h3>
+        <p>
+          Every ticker on this site is clickable. The drill down shows the full factor decomposition behind the
+          name's decile — each factor's raw value, formula, direction aligned sector <Term id="zscore">z
+          score</Term>, within sector percentile, and quarter over quarter change — plus a coverage badge (how
+          many of the {meta.n_factors} factors are actually populated), the as of date of the fundamentals used,
+          the torpedo contrast, and a copyable risks section draft. "Why is this name flagged" should never
+          require reading code.
+        </p>
+
+        <h3>How this differs from the Piper Sandler Sell Model</h3>
+        <p>
+          The PSC Sell Model shares this model's architecture — an equal weighted, sector neutral red flag
+          count, deciled within sector, decile 10 = most at risk — but the ingredient lists overlap only
+          partially. Piper's 14 factors (7 categories × 2) include equity duration, shareholder yield, revenue
+          variance, change in days payable, EPS variance, change in receivables, EVA, change in depreciable
+          life, and <Term id="sue">SUE</Term> — none of which are carried here — while this model carries
+          valuation multiples (P/E, EV/EBITDA, P/S, FCF yield) and explicit quality levels (ROE, ROA, margins)
+          that Piper's list does not. The peer groups also differ: Piper ranks within S&amp;P 1500 / Russell
+          universe sectors, this model within the S&amp;P 600+400 union. Rank disagreements between the two on a
+          specific name are therefore <em>expected</em> and usually explainable by a factor one model carries
+          and the other does not — the drill down is the tool for answering exactly that question.
+        </p>
 
         <h3>Point in time data and survivorship</h3>
         <p>Universe membership is read from a <Term id="pointintime">point in time</Term> store

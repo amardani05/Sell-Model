@@ -2,6 +2,8 @@
 // (MidCap) constituent. The S&P 400 is unioned into the universe so names that
 // graduated up out of the 600 are still scored; the flag makes that visible.
 
+import { useDrillDown } from "./DrillDown";
+
 export function TickerFlag({ index }: { index?: string | null }) {
   const is600 = index === "S&P 600";
   const is400 = index === "S&P 400";
@@ -17,9 +19,20 @@ export function TickerFlag({ index }: { index?: string | null }) {
 }
 
 // Ticker cell = symbol plus its index flag, used in every table with a ticker.
+// Clicking opens the per name drill down (factor waterfall + formulas);
+// hovering shows the top red flags inline.
 export function Ticker({ symbol, index }: { symbol: string; index?: string | null }) {
+  const dd = useDrillDown();
+  const clickable = dd.has(symbol);
   return (
-    <span className="ticker-cell">
+    <span
+      className={"ticker-cell" + (clickable ? " ticker-click" : "")}
+      title={clickable ? dd.hoverSummary(symbol) : undefined}
+      onClick={clickable ? () => dd.open(symbol) : undefined}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={clickable ? (e) => { if (e.key === "Enter") dd.open(symbol); } : undefined}
+    >
       <strong>{symbol}</strong>
       <TickerFlag index={index} />
     </span>

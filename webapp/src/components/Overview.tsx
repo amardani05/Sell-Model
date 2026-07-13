@@ -6,11 +6,13 @@ import { Term } from "./Term";
 import { Ticker } from "./TickerFlag";
 import { ScoreRow } from "../lib/types";
 
-export function Overview({ meta, scores, validation }: Bundle) {
+export function Overview({ meta, scores, validation, exclusions }: Bundle) {
   const h = String(meta.horizon_q);
   const ic = validation.ic[h];
   const dec = validation.deciles[h];
   const diag = meta.diagnostics;
+  const fullEra = validation.era_ic?.find((e) => e.era === "full-factor");
+  const priceEra = validation.era_ic?.find((e) => e.era === "price-only");
 
   const worst = scores
     .filter((r) => r.score !== null)
@@ -63,9 +65,22 @@ export function Overview({ meta, scores, validation }: Bundle) {
       <KPI label={<><Term id="decile">Decile</Term> spread (best − worst)</>} value={fmtSigned(dec?.spread_mean)} sub={`t = ${fmt(dec?.spread_tstat)}`} good={(dec?.spread_mean ?? 0) > 0} />
       <KPI label={<>Decile <Term id="monotonicity">monotonicity</Term> ρ</>} value={fmt(dec?.monotonicity_rho)} sub="want near −1 (higher sell decile means lower return)" good={(dec?.monotonicity_rho ?? 0) < 0} />
 
+      {(priceEra || fullEra) && (
+        <div className="help-note span-12">
+          <strong><Term id="coveragera">Coverage eras</Term>, read before quoting any number above.</strong>{" "}
+          {priceEra && <>The <em>price-only era</em> ({priceEra.n_periods} quarters scored by momentum + reversal
+          alone) has IC {fmtSigned(priceEra.mean_ic)} (t = {fmt(priceEra.t_stat)}). </>}
+          {fullEra && <>The <em>full-factor era</em> (all {meta.n_factors} factors) spans
+          {" "}<strong>{fullEra.n_periods} scored quarter(s)</strong>{fullEra.n_periods < 8 && <> — far too few to
+          judge the composite; treat the history above as a momentum/reversal test until deeper fundamentals are
+          wired in</>}. </>}
+          Full split on the Validation tab.
+        </div>
+      )}
+
       <section className="card span-6">
         <h3>Diagnostics gate</h3>
-        <p className="muted small">The three ways a return model can quietly lie, each checked on every run.</p>
+        <p className="muted small">The four ways a return model can quietly lie, each checked on every run.</p>
         <ul className="diag-list">
           <DiagItem label={<><Term id="placebo">Placebo</Term> (shuffle collapses IC to near 0)</>} passed={diag.placebo.passed}
             detail={`real ${fmtSigned(diag.placebo.real_ic)} vs placebo ${fmtSigned(diag.placebo.placebo_ic_mean)}`} />
@@ -73,6 +88,8 @@ export function Overview({ meta, scores, validation }: Bundle) {
             detail={diag.lookahead.price_factor_truncation ? `${diag.lookahead.price_factor_truncation.checked} checks, ${diag.lookahead.price_factor_truncation.mismatches} mismatches` : "feature and label separation OK"} />
           <DiagItem label={<><Term id="survivorship">Survivorship</Term> (<Term id="delistingaware">delisted carried</Term>)</>} passed={diag.survivorship.passed}
             detail={`terminal return ${diag.survivorship.delisting_carried.terminal_return}, ${meta.n_delisted_carried} carried`} />
+          <DiagItem label={<>Data integrity (<Term id="splice">splice gate</Term>)</>} passed={true}
+            detail={`${exclusions?.n_labels_excluded ?? 0} labels excluded across ${exclusions?.n_tickers ?? 0} tickers`} />
           <DiagItem label={<><Term id="pointintime">Point in time</Term> membership</>} passed={meta.membership_point_in_time}
             detail={diag.survivorship.membership.note} soft />
         </ul>

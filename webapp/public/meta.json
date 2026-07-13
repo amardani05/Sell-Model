@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-12T19:56:41.212328Z",
+  "generated_at": "2026-07-13T03:21:28.931171Z",
   "model": "Relative Sell Model (sector neutral relative underperformance ranking)",
   "universe_size": 994,
   "n_sectors": 11,
@@ -45,10 +45,10 @@
   "use_estimate_factors": false,
   "diagnostics": {
     "placebo": {
-      "real_ic": 0.017498227901291605,
-      "real_t": 1.1049832186286739,
-      "placebo_ic_mean": 0.0028329676674861207,
-      "placebo_ic_std": 0.0054560484096839714,
+      "real_ic": 0.01738378708101413,
+      "real_t": 0.929845594018155,
+      "placebo_ic_mean": 0.00283052169081239,
+      "placebo_ic_std": 0.005426380784200133,
       "tolerance": 0.03,
       "passed": true
     },
@@ -81,6 +81,15 @@
     },
     "all_passed": true
   },
+  "exclusions_summary": {
+    "n_labels_excluded": 6,
+    "n_tickers": 2,
+    "reasons": {
+      "splice_window": 6
+    }
+  },
+  "mc_portfolio_size": 20,
+  "mc_n_trials": 1000,
   "sector_colors": {
     "Information Technology": "#4e79a7",
     "Health Care": "#59a14f",

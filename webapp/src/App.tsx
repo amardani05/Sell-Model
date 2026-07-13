@@ -7,6 +7,7 @@ import { FactorICView } from "./components/FactorICView";
 import { ValidationBacktestView } from "./components/ValidationBacktestView";
 import { PortfolioOverlayView } from "./components/PortfolioOverlayView";
 import { MethodologyView } from "./components/MethodologyView";
+import { DrillDownProvider } from "./components/DrillDown";
 
 type Tab = "overview" | "sectors" | "torpedo" | "factors" | "validation" | "portfolio" | "methodology";
 
@@ -94,13 +95,15 @@ export default function App() {
       </nav>
 
       <main className="content">
-        {tab === "overview" && <Overview {...data} />}
-        {tab === "sectors" && <SectorDecilesView {...data} />}
-        {tab === "torpedo" && <TorpedoView {...data} />}
-        {tab === "factors" && <FactorICView {...data} />}
-        {tab === "validation" && <ValidationBacktestView {...data} />}
-        {tab === "portfolio" && <PortfolioOverlayView {...data} />}
-        {tab === "methodology" && <MethodologyView {...data} />}
+        <DrillDownProvider bundle={data}>
+          {tab === "overview" && <Overview {...data} />}
+          {tab === "sectors" && <SectorDecilesView {...data} />}
+          {tab === "torpedo" && <TorpedoView {...data} />}
+          {tab === "factors" && <FactorICView {...data} />}
+          {tab === "validation" && <ValidationBacktestView {...data} />}
+          {tab === "portfolio" && <PortfolioOverlayView {...data} />}
+          {tab === "methodology" && <MethodologyView {...data} />}
+        </DrillDownProvider>
       </main>
     </div>
   );

@@ -136,3 +136,49 @@ textarea { width: 100%; resize: vertical; }
 .idx-600 { background: #e7f0f9; color: #1d62a8; border-color: #c5dbef; }
 .idx-400 { background: #efeaf6; color: #6a4aa0; border-color: #d8cbe8; }
 .idx-legend { display: inline-flex; gap: 12px; align-items: center; font-size: 12px; color: var(--muted); }
+
+/* ---- per name drill down panel ---- */
+.dd-backdrop { position: fixed; inset: 0; background: rgba(15, 28, 42, 0.35); z-index: 60; }
+.dd-panel {
+  position: fixed; top: 0; right: 0; height: 100vh; width: min(620px, 94vw); z-index: 61;
+  background: var(--card); border-left: 1px solid var(--line); box-shadow: -8px 0 30px rgba(10, 25, 45, 0.25);
+  padding: 18px 22px 40px; overflow-y: auto;
+}
+.dd-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.dd-title { font-size: 24px; display: inline-flex; align-items: center; gap: 8px; }
+.dd-close { background: none; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px;
+  cursor: pointer; color: var(--muted); font-size: 14px; }
+.dd-close:hover { color: var(--ink); border-color: var(--muted); }
+.dd-table td, .dd-table th { padding: 5px 8px; }
+.dd-para { background: #f7f9fc; border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-top: 12px; }
+.dd-copy { background: var(--blue); color: #fff; border: none; border-radius: 6px; padding: 5px 14px;
+  cursor: pointer; font-size: 12.5px; font-weight: 600; }
+.dd-copy:hover { filter: brightness(1.1); }
+.ticker-click { cursor: pointer; }
+.ticker-click:hover strong { color: var(--blue); text-decoration: underline; }
+
+/* ---- overlay / analyst layer helpers ---- */
+.flag-chip { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 7px;
+  border-radius: 4px; color: #fff; margin-right: 4px; }
+.flag-chip.double { background: #7a0c1e; }
+.flag-chip.new { background: var(--amber); }
+.mini-flags { font-size: 11.5px; color: var(--muted); }
+.mini-flags b { color: var(--red); font-weight: 650; }
+.copy-btn { background: #fff; color: var(--blue); border: 1px solid var(--blue); border-radius: 6px;
+  padding: 5px 14px; cursor: pointer; font-size: 12.5px; font-weight: 600; }
+.copy-btn:hover { background: #eaf3fb; }
+
+/* ---- analyst override layer ---- */
+.flag-chip.ov-less { background: #2c7a4b; }
+.flag-chip.ov-more { background: #7a0c1e; }
+.ov-item { padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.ov-form { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+.ov-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin-bottom: 8px; }
+.ov-grid label, .ov-note { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px;
+  color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+.ov-grid input, .ov-grid select, .ov-note textarea { font-weight: 400; text-transform: none;
+  letter-spacing: 0; font-size: 13px; }
+.ov-grid input { border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; }
+.ov-note { margin-bottom: 8px; }
+.ov-row { display: block; max-width: 70%; overflow-x: auto; white-space: nowrap; padding: 6px 8px; }
+.dd-copy:disabled { background: #9db3c6; cursor: not-allowed; }

@@ -1,4 +1,7 @@
-import { Backtest, FactorIC, Meta, ScoreRow, SectorDeciles, Torpedo, Validation } from "./types";
+import {
+  Backtest, Drilldown, Exclusions, FactorIC, MCSim, Meta, Overrides, ScoreRow,
+  SectorDeciles, Torpedo, Transitions, Validation,
+} from "./types";
 
 async function getJSON<T>(path: string): Promise<T> {
   const resp = await fetch(path);
@@ -7,7 +10,8 @@ async function getJSON<T>(path: string): Promise<T> {
 }
 
 export async function loadAll() {
-  const [meta, scores, sectorDeciles, torpedo, factorIC, validation, backtest] = await Promise.all([
+  const [meta, scores, sectorDeciles, torpedo, factorIC, validation, backtest,
+         mcSim, exclusions, drilldown, transitions, overrides] = await Promise.all([
     getJSON<Meta>("/meta.json"),
     getJSON<ScoreRow[]>("/data/scores.json"),
     getJSON<SectorDeciles>("/data/sector_deciles.json"),
@@ -15,8 +19,14 @@ export async function loadAll() {
     getJSON<FactorIC>("/data/factor_ic.json"),
     getJSON<Validation>("/data/validation.json"),
     getJSON<Backtest>("/data/backtest.json"),
+    getJSON<MCSim>("/data/mc_sim.json"),
+    getJSON<Exclusions>("/data/exclusions.json"),
+    getJSON<Drilldown>("/data/drilldown.json"),
+    getJSON<Transitions>("/data/transitions.json"),
+    getJSON<Overrides>("/data/overrides.json"),
   ]);
-  return { meta, scores, sectorDeciles, torpedo, factorIC, validation, backtest };
+  return { meta, scores, sectorDeciles, torpedo, factorIC, validation, backtest,
+           mcSim, exclusions, drilldown, transitions, overrides };
 }
 
 export type Bundle = Awaited<ReturnType<typeof loadAll>>;
