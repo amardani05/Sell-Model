@@ -43,17 +43,23 @@ import config
 logger = logging.getLogger(__name__)
 
 
-def _nw_lags(horizon_q: int) -> int:
-    """Newey West lag choice: the label overlap in SAMPLING periods, floored at 1.
+def _nw_lags_months(months: int) -> int:
+    """Newey West lag choice for a label ``months`` long, floored at 1.
 
-    With monthly cross sections and an h quarter label, adjacent observations
-    share 3·h − 1 months of the same forward window; with quarterly sampling
-    the overlap is h − 1. That overlap is exactly the autocorrelation HAC must
-    absorb — this is what makes the overlapping monthly grid statistically
-    legitimate rather than triple counting.
+    Adjacent observations share (label length − 1) SAMPLING periods of the same
+    forward window: months − 1 on the monthly grid, months/3 − 1 on the
+    quarterly grid. That overlap is exactly the autocorrelation HAC must
+    absorb — this is what makes the overlapping grid statistically legitimate
+    rather than multiple counting the same window.
     """
     per_q = config.PERIODS_PER_QUARTER.get(config.REBALANCE_FREQ, 1)
-    return max(1, per_q * int(horizon_q) - 1)
+    periods = int(round(months * per_q / 3))
+    return max(1, periods - 1)
+
+
+def _nw_lags(horizon_q: int) -> int:
+    """Newey West lags for an ``horizon_q`` quarter label (see _nw_lags_months)."""
+    return _nw_lags_months(3 * int(horizon_q))
 
 
 def _hac_tstat(series: pd.Series, lags: int = 1) -> tuple[float, float, float]:
@@ -83,7 +89,13 @@ def _winsorize_series(s: pd.Series, pct: float = config.LABEL_WINSOR_PCT) -> pd.
 # =============================================================================
 def ic_time_series(panel: pd.DataFrame, score_col: str, horizon_q: int) -> pd.DataFrame:
     """Per date skill signed IC = -Spearman(score, fwd_rel_ret). Cols: date, ic, n."""
-    label = f"fwd_rel_ret_{horizon_q}q"
+    return ic_series_for_label(panel, score_col, f"fwd_rel_ret_{horizon_q}q")
+
+
+def ic_series_for_label(panel: pd.DataFrame, score_col: str, label: str) -> pd.DataFrame:
+    """ic_time_series against an arbitrary relative return label column."""
+    if score_col not in panel.columns or label not in panel.columns:
+        return pd.DataFrame(columns=["date", "ic", "n"])
     rows = []
     for t, g in panel.groupby("date"):
         d = g[[score_col, label]].dropna()
@@ -413,6 +425,68 @@ def stress_window_table(panel: pd.DataFrame, score_col: str, decile_col: str,
             "bench_return": bench_ret,
         })
     return pd.DataFrame(rows)
+
+
+def horizon_term_structure(panel: pd.DataFrame) -> pd.DataFrame:
+    """IC of every family / composite / factor at each diagnostic horizon.
+
+    The "IC decay curve" (roadmap 1.5): each series' Fama MacBeth mean IC is
+    measured against the sector relative forward return at every
+    ``config.TERM_STRUCTURE_HORIZONS`` label present in the panel. Families
+    are expected to differ in SPEED — short term reversal pays within a month
+    and is gone (Jegadeesh 1990), while value / quality / accruals build over
+    quarters (Sloan 1996 accruals is an annual horizon effect) — so this
+    decides whether a family that looks broken at 1Q is mis horizoned (turns
+    positive further out) or genuinely inverted (negative everywhere). Newey
+    West lags scale with each label's overlap on the sampling grid.
+
+    Read the output as SHAPES, not stars: ~27 series x 4 horizons is 100+
+    t stats, so ~5 clear |t| >= 2 by luck alone (Harvey Liu Zhu 2016). And a
+    bigger IC at a slower horizon does NOT mean "trade slower": IR ~ IC x
+    sqrt(breadth) (Grinold Kahn), and a 1M signal makes ~12 independent bets
+    a year versus ~1 at 4Q.
+
+    Returns tidy rows [series, kind, horizon, months, mean_ic, t_stat, se,
+    ir, n_periods] with kind in {composite, family, factor}. Horizons whose
+    label column is absent (e.g. the synthetic panel only carries the model
+    labels) are skipped.
+    """
+    series: list[tuple[str, str, str]] = []   # (display name, kind, column)
+    for col, name in (("score_ew", "Composite (equal weight)"),
+                      ("score_ml", "Composite (learned)")):
+        if col in panel.columns and panel[col].notna().any():
+            series.append((name, "composite", col))
+    for c in sorted(panel.columns):
+        if c.startswith("fam_") and c.endswith("__score"):
+            label = c[len("fam_"):-len("__score")].replace("_", " ").title()
+            series.append((label, "family", c))
+    for f in config.active_factors():
+        col = f"{f}__n"
+        if col in panel.columns and panel[col].notna().any():
+            series.append((f, "factor", col))
+
+    rows = []
+    for sfx, _days, months in config.TERM_STRUCTURE_HORIZONS:
+        label_col = f"fwd_rel_ret_{sfx}"
+        if label_col not in panel.columns or not panel[label_col].notna().any():
+            continue
+        lags = _nw_lags_months(months)
+        for name, kind, col in series:
+            ts = ic_series_for_label(panel, col, label_col)
+            if ts.empty:
+                continue
+            mean, t, ir = _hac_tstat(ts["ic"], lags=lags)
+            se = abs(mean / t) if (pd.notna(t) and t != 0) else np.nan
+            rows.append({"series": name, "kind": kind, "horizon": sfx.upper(),
+                         "months": months, "mean_ic": mean, "t_stat": t,
+                         "se": se, "ir": ir, "n_periods": int(len(ts))})
+    out = pd.DataFrame(rows, columns=["series", "kind", "horizon", "months",
+                                      "mean_ic", "t_stat", "se", "ir", "n_periods"])
+    if not out.empty:
+        n_h = out["horizon"].nunique()
+        logger.info("Horizon term structure: %d series x %d horizons measured",
+                    out["series"].nunique(), n_h)
+    return out
 
 
 # =============================================================================

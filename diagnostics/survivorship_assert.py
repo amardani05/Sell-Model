@@ -35,7 +35,8 @@ def assert_delisting_carried() -> dict:
     prices = pd.DataFrame({"SURV": surv, "DEAD": dead})
 
     q_dates = _quarter_end_dates(prices)
-    fwd = _forward_returns(prices, q_dates, horizon_q=config.DEFAULT_HORIZON_Q)
+    fwd = _forward_returns(prices, q_dates,
+                           config.DEFAULT_HORIZON_Q * config.TRADING_DAYS_PER_QUARTER)
 
     # Find a rebalance date that sits one horizon BEFORE the death date.
     death_date = idx[cutoff - 1]

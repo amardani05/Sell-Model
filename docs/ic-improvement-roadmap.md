@@ -11,8 +11,23 @@ under a capped Volatility family; Amihud into the torpedo only — as a *return*
 predictor it points the wrong way for a sell model). Per Amar: 2.6 delisting-reason
 curation deprioritized, 2.7 (13F) skipped. Remaining from section 2: FINRA short
 interest history (2.3), insider Form 4 (2.4), price-based SUE (2.5), ETF-archive PIT
-membership (2.6-lite). Tier 2 and the vendor ladder remain as written; 1.5/1.6
-(horizon term structure, IC-weighted blending) are the next Tier 0 items.
+membership (2.6-lite). Tier 2 and the vendor ladder remain as written; 1.6
+(IC-weighted blending) is the next Tier 0 item.
+
+**1.5 BUILT (2026-07-13):** per-family IC measured at 1M/1Q/2Q/4Q
+(`validate.horizon_term_structure`, diagnostic labels in `feature_engine`,
+"IC decay curves" chart + table on the Validation tab). VERDICT on 2011–2026:
+the quality/accruals inversion is **not** a speed problem — accruals IC
+deepens from −0.014 (1M) to −0.041 (t=−2.8) at 4Q, quality negative at every
+horizon. Valuation is the slow payer the literature predicts: +0.019 (1M) →
++0.061 (t=2.8) at 4Q, led by P/E and P/S. Momentum fades to negative at 4Q
+(consistent with 12m momentum decay), volatility increasingly negative with
+horizon (junk-rally regime compounding). The learned composite holds
++0.026→+0.036 with t ≥ 2.2 at all four horizons. Implication for 1.6: an
+IC-weighted family blend would load positive on valuation and near-zero/negative
+on quality/accruals — i.e. rediscover what the ridge found, transparently. No
+fast/slow sleeve split is justified by speed alone; the split that matters is
+sign, not horizon.
 
 Each item below says what it is, why it should raise the IC, what it costs
 (time/money), and what to read to understand it before green-lighting. Ordered so

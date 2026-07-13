@@ -129,6 +129,13 @@ export interface StressWindowRow {
   spread_mean: number | null; bench_return: number | null;
 }
 
+export interface HorizonICRow {
+  series: string; kind: "composite" | "family" | "factor";
+  horizon: string; months: number;
+  mean_ic: number | null; t_stat: number | null; se: number | null;
+  ir: number | null; n_periods: number;
+}
+
 export interface Validation {
   ic: Record<string, ICBlock>;
   deciles: Record<string, DecileBlock>;
@@ -141,6 +148,7 @@ export interface Validation {
   yearly_ic: YearlyICRow[];
   family_ic_rolling: Record<string, string | number | null>[];
   stress_windows: StressWindowRow[];
+  horizon_term_structure: HorizonICRow[];
   label_winsor_pct: number;
   era_min_avg_factors: number;
 }

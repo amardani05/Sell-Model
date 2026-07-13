@@ -3,7 +3,7 @@ import { Bundle, fmt, fmtSigned, fmtPct } from "../lib/data";
 import { Plot } from "./Plot";
 import { DataTable } from "./DataTable";
 import { Term } from "./Term";
-import { BacktestSleeve, CalibrationRow, EraICRow, MCTier } from "../lib/types";
+import { BacktestSleeve, CalibrationRow, EraICRow, HorizonICRow, MCTier } from "../lib/types";
 
 const TIER_COLORS: Record<string, string> = {
   full: "#8893a0", ex10: "#1d62a8", ex9_10: "#2c7a4b", top_half: "#6a4aa0",
@@ -20,6 +20,23 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
   const eras = validation.eras ?? [];
   const eraIC = validation.era_ic ?? [];
   const firstFull = eras.find((e) => e.era === "full factor")?.date ?? null;
+
+  // roadmap 1.5: IC decay curves (per family IC at each label horizon)
+  const termStructure = validation.horizon_term_structure ?? [];
+  const tsHorizons = Array.from(new Map(termStructure.map((r) => [r.horizon, r.months])).entries())
+    .sort((a, b) => a[1] - b[1]).map(([hz]) => hz);
+  const tsFamSeries = Array.from(new Set(termStructure.filter((r) => r.kind !== "factor").map((r) => r.series)));
+  const tsFactorSeries = Array.from(new Set(termStructure.filter((r) => r.kind === "factor").map((r) => r.series)));
+  const tsCell = new Map(termStructure.map((r) => [`${r.series}|${r.horizon}`, r]));
+  const defaultComposite = meta.default_score === "score_ml" ? "Composite (learned)" : "Composite (equal weight)";
+  const tsColumns = [
+    { key: "series", label: "Series", render: (r: { series: string }) =>
+        r.series === defaultComposite ? <strong>{r.series} ★</strong> : <>{r.series}</> },
+    ...tsHorizons.map((hz) => ({
+      key: hz, label: hz, align: "right" as const,
+      render: (r: { series: string }) => icCell(tsCell.get(`${r.series}|${hz}`)),
+    })),
+  ];
 
   const sleeves = backtest.sleeves ?? {};
   const holdAll = sleeves["hold_all"];
@@ -185,6 +202,73 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
         <p className="muted small">
           IC &gt; 0 with the benchmark falling = the screen protected when it mattered. IC &lt; 0 in a rally =
           flagged names led the bounce (the lottery effect in regime form).
+        </p>
+      </section>
+
+      {/* ================= HORIZON TERM STRUCTURE ================= */}
+      <section className="card span-7">
+        <h3>IC term structure — how fast does each family pay?</h3>
+        <p className="muted small">
+          Each line is one family's sub score tested on its own against forward relative returns at four label
+          horizons (1M, 1Q, 2Q, 4Q). Documented anomalies differ in <em>speed</em>: short term reversal pays
+          within a month and is gone (Jegadeesh 1990), while value, quality and accruals build over two to four
+          quarters (Sloan's accruals result is an annual effect). A family that is negative at 1Q but positive
+          further out is mis timed, not broken — a candidate for a slower label or a separate slow sleeve. A
+          family negative at every horizon is genuinely inverted in this sample. Error bars are ±2
+          {" "}<Term id="standarderror">standard errors</Term> (<Term id="neweywest">Newey West</Term>; lags
+          scale with each label's overlap on the monthly grid).
+        </p>
+        {termStructure.length ? (
+          <Plot height={360}
+            data={tsFamSeries.map((name) => {
+              const rows = tsHorizons.map((hz) => tsCell.get(`${name}|${hz}`) ?? null);
+              const isComposite = name.startsWith("Composite");
+              const isDefault = name === defaultComposite;
+              return {
+                type: "scatter" as const, mode: "lines+markers" as const, name,
+                x: tsHorizons, y: rows.map((r) => r?.mean_ic ?? null),
+                error_y: { type: "data" as const, array: rows.map((r) => 2 * (r?.se ?? 0)),
+                           visible: true, thickness: 1 },
+                line: isDefault ? { color: "#1d2733", width: 3.5 }
+                  : isComposite ? { color: "#8893a0", width: 1.5, dash: "dot" as const }
+                  : { width: 2 },
+                marker: { size: 6 },
+                text: rows.map((r) => (r ? `t ${fmt(r.t_stat, 1)} · n ${r.n_periods}` : "")),
+                hovertemplate: "%{x}: IC %{y:.4f}<br>%{text}<extra>" + name + "</extra>",
+              };
+            })}
+            layout={{ xaxis: { title: "label horizon", type: "category" },
+                      yaxis: { title: "mean IC", zeroline: true },
+                      legend: { orientation: "h", y: -0.25 } }} />
+        ) : <Empty />}
+      </section>
+
+      <section className="card span-5">
+        <h3>Term structure table</h3>
+        {termStructure.length ? (
+          <>
+            <DataTable
+              rows={tsFamSeries.map((s) => ({ series: s }))}
+              rowKey={(r) => r.series}
+              columns={tsColumns}
+            />
+            <details style={{ marginTop: 8 }}>
+              <summary className="muted small">Per factor detail ({tsFactorSeries.length} factors)</summary>
+              <DataTable
+                rows={tsFactorSeries.map((s) => ({ series: s }))}
+                rowKey={(r) => r.series}
+                columns={tsColumns}
+              />
+            </details>
+          </>
+        ) : <Empty />}
+        <p className="muted small">
+          Read <strong>shapes, not stars</strong>: {tsFamSeries.length + tsFactorSeries.length} series across
+          {" "}{tsHorizons.length} horizons is 100+ <Term id="tstat">t statistics</Term>, so a few clear t = 2
+          by luck alone (Harvey, Liu and Zhu 2016). A bigger IC at a slower horizon also does not mean the
+          model should trade slower: IR ≈ IC × √breadth (Grinold and Kahn), and a 1M signal makes about 12
+          independent bets a year versus about 1 at 4Q. The 4Q column spans only ~15 independent windows —
+          directional evidence with wide bands. ★ marks the default scorer.
         </p>
       </section>
 
@@ -558,6 +642,16 @@ function MetricsTable({ sleeves }: { sleeves: BacktestSleeve[] }) {
         { key: "avg_turnover", label: <Term id="turnover">Turnover</Term>, align: "right", render: (s) => s.metrics.avg_turnover != null ? fmtPct(s.metrics.avg_turnover as number, 0) : "—" },
       ]}
     />
+  );
+}
+
+function icCell(r: HorizonICRow | null | undefined): ReactNode {
+  if (!r || r.mean_ic == null) return <span className="muted">—</span>;
+  return (
+    <span>
+      <span className={r.mean_ic >= 0 ? "pos" : "neg"} style={{ fontWeight: 650 }}>{fmtSigned(r.mean_ic, 3)}</span>{" "}
+      <span className="muted small">t {fmt(r.t_stat, 1)}</span>
+    </span>
   );
 }
 

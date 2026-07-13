@@ -316,11 +316,12 @@ def detect_price_anomalies(prices: pd.DataFrame) -> pd.DataFrame:
 def _forward_returns(
     prices: pd.DataFrame,
     q_dates: list[pd.Timestamp],
-    horizon_q: int,
+    horizon_days: int,
     anomalies: pd.DataFrame | None = None,
     exclusions_out: list | None = None,
+    exclusion_horizon_q: int | None = None,
 ) -> pd.DataFrame:
-    """Wide [date x ticker] forward TOTAL return over ``horizon_q`` quarters.
+    """Wide [date x ticker] forward TOTAL return over ``horizon_days`` trading days.
 
     Delisting aware: a name that stops trading between t and the horizon end is
     set to ``config.DELISTING_TERMINAL_RETURN`` (carried to terminal value).
@@ -329,9 +330,11 @@ def _forward_returns(
     Splice gated: a window that spans a flagged anomaly day (see
     :func:`detect_price_anomalies`) is excluded (NaN) and recorded in
     ``exclusions_out``, as is any return beyond ``config.MAX_ABS_FORWARD_RETURN``
-    (backstop). Excluded cells are never delisting filled.
+    (backstop). Excluded cells are never delisting filled. Records are stamped
+    with ``exclusion_horizon_q``; the diagnostic term structure horizons pass
+    ``exclusions_out=None`` (gate applied, log restricted to model labels —
+    see config.TERM_STRUCTURE_HORIZONS).
     """
-    horizon_days = horizon_q * config.TRADING_DAYS_PER_QUARTER
     px_q = _asof_sample(prices, q_dates)                       # price at each rebalance
     last_valid = prices.apply(lambda c: c.last_valid_index())  # per ticker
     dataset_end = prices.index.max()
@@ -347,7 +350,7 @@ def _forward_returns(
     def _record(t, tk, reason, value):
         if exclusions_out is not None:
             exclusions_out.append({"date": pd.Timestamp(t), "ticker": tk,
-                                   "horizon_q": horizon_q, "reason": reason,
+                                   "horizon_q": exclusion_horizon_q, "reason": reason,
                                    "value": float(value) if np.isfinite(value) else None})
 
     out = pd.DataFrame(index=q_dates, columns=prices.columns, dtype=float)
@@ -437,9 +440,18 @@ def build_panel(
     # --- forward returns per horizon (delisting aware, splice gated) ---
     anomalies = detect_price_anomalies(prices)
     label_exclusions: list = []
-    fwd = {h: _forward_returns(prices, q_dates, h, anomalies=anomalies,
-                               exclusions_out=label_exclusions)
+    # model label horizons: exclusions logged (these are the labels shipped)
+    fwd = {f"{h}q": _forward_returns(prices, q_dates,
+                                     h * config.TRADING_DAYS_PER_QUARTER,
+                                     anomalies=anomalies,
+                                     exclusions_out=label_exclusions,
+                                     exclusion_horizon_q=h)
            for h in config.HORIZONS_Q}
+    # diagnostic term structure horizons: same gate, log restricted to the
+    # model labels above (one splice event must not be counted per horizon)
+    for sfx, days, _months in config.TERM_STRUCTURE_HORIZONS:
+        if sfx not in fwd:
+            fwd[sfx] = _forward_returns(prices, q_dates, days, anomalies=anomalies)
 
     # --- fundamental factor time series per ticker (EDGAR override wins) ---
     if fund_ts_override is not None:
@@ -510,14 +522,19 @@ def build_panel(
                     rec[name] = float(row[name]) if (row is not None and name in row and pd.notna(row[name])) else np.nan
             # metadata
             rec["short_pct_float"] = float(si.get(tk, np.nan)) if len(si) else np.nan
-            # labels
+            # labels (model horizons own the delisted flag; the diagnostic
+            # term structure labels never feed scoring)
             delisted_flag = False
             for h in config.HORIZONS_Q:
-                v = fwd[h].at[t, tk] if tk in fwd[h].columns else np.nan
+                v = fwd[f"{h}q"].at[t, tk] if tk in fwd[f"{h}q"].columns else np.nan
                 rec[f"fwd_ret_{h}q"] = v
                 if pd.notna(v) and v == config.DELISTING_TERMINAL_RETURN:
                     delisted_flag = True
             rec["delisted"] = delisted_flag
+            for sfx, _days, _months in config.TERM_STRUCTURE_HORIZONS:
+                key = f"fwd_ret_{sfx}"
+                if key not in rec:
+                    rec[key] = fwd[sfx].at[t, tk] if tk in fwd[sfx].columns else np.nan
             records.append(rec)
 
     panel = pd.DataFrame.from_records(records)
@@ -529,10 +546,13 @@ def build_panel(
     # --- sector relative labels: stock fwd minus PEER median, where peers are
     # (date, sector, index): a 600 name is never measured against 400 medians.
     label_keys = ["date", "gics_sector"] + (["index_name"] if "index_name" in panel.columns else [])
-    for h in config.HORIZONS_Q:
-        col = f"fwd_ret_{h}q"
+    label_suffixes = [f"{h}q" for h in config.HORIZONS_Q]
+    label_suffixes += [sfx for sfx, _d, _m in config.TERM_STRUCTURE_HORIZONS
+                       if sfx not in label_suffixes]
+    for sfx in label_suffixes:
+        col = f"fwd_ret_{sfx}"
         med = panel.groupby(label_keys)[col].transform("median")
-        panel[f"fwd_rel_ret_{h}q"] = panel[col] - med
+        panel[f"fwd_rel_ret_{sfx}"] = panel[col] - med
 
     logger.info("Panel built: %d rows, %d delisted carried labels, %d labels excluded "
                 "by the data integrity gate",

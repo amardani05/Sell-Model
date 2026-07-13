@@ -73,6 +73,24 @@ REBALANCE_FREQ: str = "M"          # "M" (monthly) | "Q" (quarterly) cross secti
 PERIODS_PER_QUARTER: dict[str, int] = {"M": 3, "Q": 1}
 TRADING_DAYS_PER_QUARTER: int = 63
 
+# Horizon term structure (roadmap 1.5): DIAGNOSTIC label horizons on which the
+# validation layer measures each factor family's IC — the "IC decay curves".
+# Tuples are (label suffix, trading days, calendar months). The 1q/2q entries
+# reuse the model's label columns; extra suffixes get their own
+# fwd_ret_/fwd_rel_ret_ columns built the same way (delisting aware, splice
+# gated). These horizons NEVER feed scoring; they answer "at what speed does
+# each family pay" — e.g. whether the quality/accruals inversion at 1Q is a
+# horizon mismatch (turns positive at 4Q) or a genuine regime problem
+# (negative everywhere). The published exclusions log stays restricted to the
+# model horizons so one splice event is not logged once per diagnostic label;
+# the gate itself is applied to every horizon.
+TERM_STRUCTURE_HORIZONS: list[tuple[str, int, int]] = [
+    ("1m", 21, 1),
+    ("1q", 63, 3),
+    ("2q", 126, 6),
+    ("4q", 252, 12),
+]
+
 # =============================================================================
 # Factor taxonomy
 # Each factor is computed, then neutralized WITHIN GICS sector at each date

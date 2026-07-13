@@ -142,7 +142,8 @@ def run(args) -> None:
     from validate import (summarize_ic, decile_analysis, calibration_fm,
                           decile_event_study, coverage_eras, ic_summary_by_era,
                           ic_by_year, paired_ic_test, factor_ic_table, compare_models,
-                          family_ic_rolling, stress_window_table)
+                          family_ic_rolling, stress_window_table,
+                          horizon_term_structure)
     from backtest import (backtest_long_only_avoid_worst, backtest_hold_all,
                           benchmark_result, relative_metrics,
                           segment_by_year, segment_by_regime)
@@ -217,6 +218,8 @@ def run(args) -> None:
     family_roll = family_ic_rolling(sel, horizon)
     stress = stress_window_table(sel, score_col, decile_col, horizon,
                                  benchmark_px=bench_px)
+    # roadmap 1.5: per family IC at 1M/1Q/2Q/4Q — the IC decay curves
+    term_structure = horizon_term_structure(sel)
 
     # --- backtest (quarter end subset of the selection universe) ---
     logger.info("=== Backtest ===")
@@ -257,7 +260,7 @@ def run(args) -> None:
             ic_summaries=ic_summaries, decile_summaries=decile_summaries,
             calibration=calibration, comparison=comparison, promotion=promotion,
             event_study=event_study, eras=eras, era_ic=era_ic, yearly_ic=yearly_ic,
-            family_roll=family_roll, stress=stress,
+            family_roll=family_roll, stress=stress, term_structure=term_structure,
             backtests={"hold_all": hold_all, "avoid_worst": avoid, "benchmark": bench},
             seg_year=seg_year, seg_regime=seg_regime, mc=mc, exclusions=exclusions,
             ov_active=ov_active, ov_scoreboard=ov_scoreboard,
@@ -284,7 +287,8 @@ def run(args) -> None:
 
     _print_summary(panel, score_col, decile_col, latest, latest_date, ic_summaries,
                    decile_summaries, comparison, era_ic, hold_all, avoid, bench, mc,
-                   exclusions, diag, horizon, time.time() - t0)
+                   exclusions, diag, horizon, time.time() - t0,
+                   term_structure=term_structure)
 
 
 # =============================================================================
@@ -292,7 +296,7 @@ def run(args) -> None:
 # =============================================================================
 def _print_summary(panel, score_col, decile_col, latest, latest_date, ic_summaries,
                    decile_summaries, comparison, era_ic, hold_all, avoid, bench, mc,
-                   exclusions, diag, horizon, secs) -> None:
+                   exclusions, diag, horizon, secs, term_structure=None) -> None:
     line = "=" * 76
     print(f"\n{line}\nRELATIVE SELL MODEL — sector neutral relative underperformance ranking")
     print(f"{line}")
@@ -318,6 +322,24 @@ def _print_summary(panel, score_col, decile_col, latest, latest_date, ic_summari
         print("  model comparison (OOS IC):")
         for _, r in comparison.iterrows():
             print(f"    {r['model']:<16} IC={r['mean_ic']:+.4f} t={r['t_stat']:+.2f} IR={r['ir']:+.2f}")
+
+    if term_structure is not None and not term_structure.empty:
+        present = set(term_structure["horizon"])
+        horizons = [s.upper() for s, _d, _m in config.TERM_STRUCTURE_HORIZONS
+                    if s.upper() in present]
+        print(f"\nHORIZON TERM STRUCTURE  (IC by label horizon; read shapes, not stars)")
+        print("  " + f"{'':<26}" + "".join(f"{h:>16}" for h in horizons))
+        sub = term_structure[term_structure["kind"].isin(["composite", "family"])]
+        for name in sub["series"].unique():
+            g = sub[sub["series"] == name].set_index("horizon")
+            cells = ""
+            for h in horizons:
+                if h in g.index:
+                    r = g.loc[h]
+                    cells += f"{r['mean_ic']:+.3f} (t{r['t_stat']:+.1f})".rjust(16)
+                else:
+                    cells += " " * 16
+            print(f"  {name:<26}{cells}")
 
     print(f"\nBACKTEST  (quarterly rebalance, equal weight; screen judged vs hold-all, IJR = context)")
     for res in (hold_all, avoid, bench):
