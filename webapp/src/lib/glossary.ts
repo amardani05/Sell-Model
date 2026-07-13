@@ -143,6 +143,10 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     label: "base rate",
     def: "The historical frequency of an outcome, for example how often decile 10 names went on to trail their sector. Research notes should cite base rates only once there is enough full factor history to estimate them honestly.",
   },
+  horizon: {
+    label: "forward horizon",
+    def: "How far ahead the label looks. 1Q judges every score by the stock's sector relative return over the NEXT quarter; 2Q over the next two quarters. The toggle recomputes the page at the other horizon — slower signals like value and quality often need the longer window to pay off.",
+  },
   familybalanced: {
     label: "family balanced",
     def: "Factors are averaged within their family first (valuation, momentum, volatility, quality, investment, earnings quality), then the family scores are averaged. Four overlapping valuation ratios cast one vote, not four — and adding more price factors can never let price signals swamp the fundamentals.",

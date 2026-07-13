@@ -98,6 +98,9 @@ def equal_weight_score(panel: pd.DataFrame) -> pd.DataFrame:
     fam_scores = pd.DataFrame(index=df.index)
     for g, gcols in fam_cols.items():
         fam_scores[g] = df[gcols].mean(axis=1, skipna=True)
+        # persist each family's sub score: the per family IC diagnostics
+        # ("what broke, and when") read these columns directly.
+        df[f"fam_{g.replace(' ', '_').lower()}__score"] = fam_scores[g]
 
     df["n_factors_used"] = df[list(fam_of)].notna().sum(axis=1)
     df["n_families_used"] = fam_scores.notna().sum(axis=1)

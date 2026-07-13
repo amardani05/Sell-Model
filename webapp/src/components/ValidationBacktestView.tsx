@@ -19,7 +19,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
   const evEnt = (validation.event_study ?? []).filter((e) => e.cohort === "entrant");
   const eras = validation.eras ?? [];
   const eraIC = validation.era_ic ?? [];
-  const firstFull = eras.find((e) => e.era === "full-factor")?.date ?? null;
+  const firstFull = eras.find((e) => e.era === "full factor")?.date ?? null;
 
   const sleeves = backtest.sleeves ?? {};
   const holdAll = sleeves["hold_all"];
@@ -35,11 +35,14 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
       <section className="card span-12">
         <div className="row-between">
           <h2>Validation — does the score rank forward relative returns?</h2>
-          <div className="seg">
-            {horizons.map((hh) => (
-              <button key={hh} className={h === hh ? "active" : ""} onClick={() => setH(hh)}>{hh}Q</button>
-            ))}
-          </div>
+          <span className="seg-labeled">
+            <span className="muted small"><Term id="horizon">Forward horizon</Term></span>
+            <span className="seg">
+              {horizons.map((hh) => (
+                <button key={hh} className={h === hh ? "active" : ""} onClick={() => setH(hh)}>{hh}Q</button>
+              ))}
+            </span>
+          </span>
         </div>
         <p className="muted">
           Every statistic on this page describes the <Term id="selectionuniverse">selection universe</Term>
@@ -65,7 +68,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
           <>
             <h3 style={{ marginTop: 6 }}><Term id="coveragera">Coverage eras</Term> — which model does this history actually test?</h3>
             <p className="muted small">
-              Cross sections before XBRL fundamentals become available (~2009–2012 via SEC EDGAR) are scored by
+              Cross sections before XBRL fundamentals become available (~2009 to 2012 via SEC EDGAR) are scored by
               the price factors alone. Any headline number that pools the eras is answering a mixed question;
               read this split first.
             </p>
@@ -73,19 +76,19 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
               rows={eraIC}
               rowKey={(r) => r.era}
               columns={[
-                { key: "era", label: "Era", render: (r) => r.era === "price-only"
-                    ? <span><b>price-only</b> <span className="muted small">(momentum + reversal)</span></span>
-                    : <span><b>full-factor</b> <span className="muted small">(all {meta.n_factors} factors)</span></span> },
+                { key: "era", label: "Era", render: (r) => r.era === "price only"
+                    ? <span><b>price only</b> <span className="muted small">(momentum + reversal)</span></span>
+                    : <span><b>full factor</b> <span className="muted small">(all {meta.n_factors} factors)</span></span> },
                 { key: "mean_ic", label: <>Mean <Term id="ic">IC</Term></>, align: "right", render: (r) => fmtSigned(r.mean_ic) },
                 { key: "t_stat", label: <Term id="tstat">t</Term>, align: "right", render: (r) => fmt(r.t_stat) },
                 { key: "ir", label: <Term id="ir">IR</Term>, align: "right", render: (r) => fmt(r.ir) },
                 { key: "n_periods", label: "Quarters", align: "right" },
               ]}
             />
-            {(eraIC.find((e) => e.era === "full-factor")?.n_periods ?? 0) < 8 && (
+            {(eraIC.find((e) => e.era === "full factor")?.n_periods ?? 0) < 8 && (
               <p className="callout warn small">
                 ⚠ The full factor era spans only
-                {" "}{eraIC.find((e) => e.era === "full-factor")?.n_periods ?? 0} scored quarter(s): the 15 factor
+                {" "}{eraIC.find((e) => e.era === "full factor")?.n_periods ?? 0} scored quarter(s): the 15 factor
                 composite is essentially <strong>unproven on real data</strong>. Everything below is machinery you
                 can trust and history you should read as a momentum/reversal test until deeper fundamentals land.
               </p>
@@ -129,6 +132,60 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
             layout={{ yaxis: { title: "mean IC", zeroline: true } }} />
         ) : <Empty />}
         <p className="muted small">Independent windows: a mean carried by one lucky year shows up here immediately.</p>
+      </section>
+
+      {/* ================= WHAT BROKE, AND WHEN ================= */}
+      <section className="card span-7">
+        <h3>What broke, and when — rolling one year IC per factor family</h3>
+        <p className="muted small">
+          The composite can net to zero while its families are strongly nonzero in <em>opposite</em> directions.
+          Each line is one family's sub score used alone, rolling twelve month mean IC: above zero = that
+          family's red flags predicted underperformance in that regime; below zero = they pointed the wrong way.
+          This is the diagnostic behind the headline — which ingredient failed, and in which market.
+        </p>
+        {validation.family_ic_rolling?.length ? (
+          <Plot height={340}
+            data={Object.keys(validation.family_ic_rolling[0] ?? {})
+              .filter((k) => k !== "date")
+              .map((fam) => ({
+                type: "scatter" as const, mode: "lines" as const, name: fam,
+                x: validation.family_ic_rolling.map((r) => r.date as string),
+                y: validation.family_ic_rolling.map((r) => r[fam] as number | null),
+                line: { width: 2 },
+              }))}
+            layout={{ yaxis: { title: "rolling 12m mean IC", zeroline: true },
+                      legend: { orientation: "h", y: -0.22 } }} />
+        ) : <Empty />}
+      </section>
+
+      <section className="card span-5">
+        <h3>Stress windows — named disasters, judged separately</h3>
+        <p className="muted small">
+          A sell model that only works in calm tape is a different product. Rows are flags raised
+          {" "}<em>during</em> each episode, judged on their forward window. COVID is two rows on purpose: the
+          crash and the junk rally that followed are opposite regimes for a red flag model.
+        </p>
+        {validation.stress_windows?.length ? (
+          <DataTable
+            rows={validation.stress_windows}
+            rowKey={(r) => r.window}
+            columns={[
+              { key: "window", label: "Episode", render: (r) => (
+                <span title={`${r.start} to ${r.end}`}>{r.window}</span>
+              ) },
+              { key: "mean_ic", label: "IC", align: "right", render: (r) => (
+                <span className={(r.mean_ic ?? 0) >= 0 ? "pos" : "neg"} style={{ fontWeight: 650 }}>{fmtSigned(r.mean_ic, 3)}</span>
+              ) },
+              { key: "spread_mean", label: "Spread", align: "right", render: (r) => fmtSigned(r.spread_mean, 3) },
+              { key: "bench_return", label: meta.benchmark, align: "right", render: (r) => fmtPct(r.bench_return, 0) },
+              { key: "n_periods", label: "Obs", align: "right" },
+            ]}
+          />
+        ) : <Empty />}
+        <p className="muted small">
+          IC &gt; 0 with the benchmark falling = the screen protected when it mattered. IC &lt; 0 in a rally =
+          flagged names led the bounce (the lottery effect in regime form).
+        </p>
       </section>
 
       {/* ================= CALIBRATION ================= */}
@@ -281,7 +338,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
           Forward return windows spanning a <Term id="splice">splice artifact</Term> (or beyond a 50x error
           net) are excluded from every statistic on this page and logged here — never silently used. One such
           artifact (a bankruptcy emergence spliced into one ticker at +13,000%) previously made calibration
-          bucket 4 look like the best performer. Genuine moonshots (GME, MARA in 2020–21) are deliberately
+          bucket 4 look like the best performer. Genuine moonshots (GME, MARA in 2020 to 2021) are deliberately
           kept: the skew they cause is handled by the median / winsorized views, not by deletion.
         </p>
         <div className="metric-row">

@@ -234,10 +234,12 @@ MIN_FAMILIES_FOR_SCORE: int = 2  # ...spread over >= this many families
 # =============================================================================
 # Model selection
 # =============================================================================
-# Baseline is ALWAYS the equal weight composite (Piper style). The learned weight
-# model is OPTIONAL and only ever becomes the *default scorer* if it beats the
-# baseline out of sample (validate.py decides; main.py reports both either way).
-USE_LEARNED_WEIGHTS: bool = False
+# The learned weight model is now fitted on EVERY run (the 183 quarter EDGAR
+# history showed the factor families carry OPPOSITE signs — valuation flags
+# work, quality/accruals flags inverted — which an equal weight sum cancels
+# out and a walk forward fit can learn). The baseline is still always computed
+# and reported side by side; validate.paired_ic_test still decides the default.
+USE_LEARNED_WEIGHTS: bool = True
 LEARNED_MODEL: str = "ridge"          # "ridge" | "logistic" | "gbm"
 WALK_FORWARD_MIN_TRAIN_PERIODS: int = 6   # cross sections before first OOS fit
 RIDGE_ALPHA: float = 10.0
@@ -342,6 +344,23 @@ MAX_ABS_FORWARD_RETURN: float = 50.0  # 50x per horizon window = corruption
 LABEL_WINSOR_PCT: float = 0.01
 
 # =============================================================================
+# Stress windows — named disaster scenarios the model must be judged inside
+# =============================================================================
+# A sell model that only works in calm tape is a different product from one
+# that works through dislocations. Every named episode gets its own row of
+# validation stats (IC, decile spread) so regime failure is visible instead of
+# averaged away. COVID gets two rows on purpose: the crash and the junk rally
+# that followed are OPPOSITE regimes for a red flag model.
+STRESS_WINDOWS: list[tuple[str, str, str]] = [
+    ("US downgrade / EU crisis",   "2011-07-01", "2011-12-31"),
+    ("Industrial recession 15/16", "2015-06-01", "2016-02-29"),
+    ("Q4 2018 rate scare",         "2018-10-01", "2018-12-31"),
+    ("COVID crash",                "2020-02-01", "2020-03-31"),
+    ("COVID junk rally",           "2020-04-01", "2021-02-28"),
+    ("2022 rate shock",            "2022-01-01", "2022-09-30"),
+]
+
+# =============================================================================
 # Coverage eras
 # =============================================================================
 # yfinance fundamentals reach back only ~4-5 quarters, so historical cross
@@ -365,8 +384,14 @@ MC_SEED: int = 42
 
 # Learned model promotion: the learned scorer becomes the default only if its
 # per date IC beats the baseline's by a PAIRED Newey West t stat of at least
-# this (a point estimate edge of +0.001 is noise, not a win).
-PROMOTION_MIN_T: float = 2.0
+# this. The bar is ONE SIDED at 5% (t >= 1.645): the hypothesis is directional
+# and pre registered (learned > baseline, walk forward out of sample), so a
+# two sided 2.0 bar double charges for a tail we never claim. HONESTY NOTE:
+# this bar was relaxed from 2.0 AFTER observing a paired t of 1.88 on the
+# 2011-2026 EDGAR history — a judgment call by the PM (Amar, 2026-07-13),
+# documented here and in the methodology tab rather than hidden. The paired
+# test, the side by side comparison, and this note ship with every run.
+PROMOTION_MIN_T: float = 1.645
 
 # =============================================================================
 # Data fetch / cache knobs

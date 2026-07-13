@@ -61,7 +61,7 @@ export function PortfolioOverlayView({ meta, scores, drilldown, transitions, ove
     const rows = sortedHeld.map((r) => {
       const dq = qoq(r.ticker);
       const flags = topFlags(r.ticker).map((f) => `${factorLabel(f.f)} +${f.z.toFixed(1)}σ`).join("; ") || "—";
-      const badges = [r.decile === n ? "REVIEW" : "", isNew(r.ticker) ? "NEW" : "", isDouble(r) ? "DOUBLE-FLAG" : ""].filter(Boolean).join(" ");
+      const badges = [r.decile === n ? "REVIEW" : "", isNew(r.ticker) ? "NEW" : "", isDouble(r) ? "DOUBLE FLAG" : ""].filter(Boolean).join(" ");
       return `| ${r.ticker} | ${r.gics_sector} | ${r.decile ?? "—"} | ${dq == null ? "—" : dq > 0 ? `+${dq}` : dq} | ${flags} | ${r.torpedo_tier ?? "—"} | ${badges} |`;
     });
     const md = [
@@ -93,7 +93,7 @@ export function PortfolioOverlayView({ meta, scores, drilldown, transitions, ove
           section draft.</strong>
         </p>
         <div className="help-note">
-          <strong>How IMA should read this.</strong> A holding in decile 9–10 is a prompt to re-underwrite, not an
+          <strong>How IMA should read this.</strong> A holding in decile 9–10 is a prompt to underwrite the thesis again, not an
           automatic sell: the model expects it to lag its sector peers over the next {meta.horizon_q} quarter(s),
           and the burden shifts to the thesis to explain why the flags are wrong or already priced. The
           <em> QoQ Δ</em> column shows decile movement since last quarter — deterioration is often more

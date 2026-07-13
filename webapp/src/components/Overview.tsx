@@ -11,8 +11,8 @@ export function Overview({ meta, scores, validation, exclusions }: Bundle) {
   const ic = validation.ic[h];
   const dec = validation.deciles[h];
   const diag = meta.diagnostics;
-  const fullEra = validation.era_ic?.find((e) => e.era === "full-factor");
-  const priceEra = validation.era_ic?.find((e) => e.era === "price-only");
+  const fullEra = validation.era_ic?.find((e) => e.era === "full factor");
+  const priceEra = validation.era_ic?.find((e) => e.era === "price only");
   const [universe, setUniverse] = useState<string>(meta.selection_index ?? "S&P 600");
 
   const worst = scores
@@ -69,9 +69,9 @@ export function Overview({ meta, scores, validation, exclusions }: Bundle) {
       {(priceEra || fullEra) && (
         <div className="help-note span-12">
           <strong><Term id="coveragera">Coverage eras</Term>, read before quoting any number above.</strong>{" "}
-          {priceEra && <>The <em>price-only era</em> ({priceEra.n_periods} quarters scored by momentum + reversal
+          {priceEra && <>The <em>price only era</em> ({priceEra.n_periods} quarters scored by momentum + reversal
           alone) has IC {fmtSigned(priceEra.mean_ic)} (t = {fmt(priceEra.t_stat)}). </>}
-          {fullEra && <>The <em>full-factor era</em> (all {meta.n_factors} factors) spans
+          {fullEra && <>The <em>full factor era</em> (all {meta.n_factors} factors) spans
           {" "}<strong>{fullEra.n_periods} scored quarter(s)</strong>{fullEra.n_periods < 8 && <> — far too few to
           judge the composite; treat the history above as a momentum/reversal test until deeper fundamentals are
           wired in</>}. </>}
@@ -103,7 +103,7 @@ export function Overview({ meta, scores, validation, exclusions }: Bundle) {
             data={[{
               type: "bar", x: icSeries.map((s) => s.date), y: icSeries.map((s) => s.ic),
               marker: { color: icSeries.map((s) => (s.ic >= 0 ? "#2c7a4b" : "#b3001b")) },
-              name: "per-period IC",
+              name: "per period IC",
             }]}
             layout={{ yaxis: { title: "Spearman IC", zeroline: true }, xaxis: { title: "" } }} />
         ) : <p className="muted">No IC series (insufficient labeled cross sections).</p>}

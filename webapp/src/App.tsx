@@ -13,11 +13,11 @@ type Tab = "overview" | "sectors" | "torpedo" | "factors" | "validation" | "port
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "overview", label: "Overview" },
-  { key: "sectors", label: "Sector Deciles" },
-  { key: "torpedo", label: "Torpedo Screener" },
-  { key: "factors", label: "Factor IC" },
-  { key: "validation", label: "Validation / Backtest" },
   { key: "portfolio", label: "Portfolio Overlay" },
+  { key: "torpedo", label: "Torpedo Screener" },
+  { key: "validation", label: "Validation / Backtest" },
+  { key: "sectors", label: "Sector Deciles" },
+  { key: "factors", label: "Factor IC" },
   { key: "methodology", label: "Methodology" },
 ];
 

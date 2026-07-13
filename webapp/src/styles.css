@@ -182,3 +182,6 @@ textarea { width: 100%; resize: vertical; }
 .ov-note { margin-bottom: 8px; }
 .ov-row { display: block; max-width: 70%; overflow-x: auto; white-space: nowrap; padding: 6px 8px; }
 .dd-copy:disabled { background: #9db3c6; cursor: not-allowed; }
+
+/* labeled segmented control */
+.seg-labeled { display: inline-flex; align-items: center; gap: 8px; }

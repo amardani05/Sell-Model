@@ -141,7 +141,8 @@ def run(args) -> None:
     from model import equal_weight_score, learned_weight_score
     from validate import (summarize_ic, decile_analysis, calibration_fm,
                           decile_event_study, coverage_eras, ic_summary_by_era,
-                          ic_by_year, paired_ic_test, factor_ic_table, compare_models)
+                          ic_by_year, paired_ic_test, factor_ic_table, compare_models,
+                          family_ic_rolling, stress_window_table)
     from backtest import (backtest_long_only_avoid_worst, backtest_hold_all,
                           benchmark_result, relative_metrics,
                           segment_by_year, segment_by_regime)
@@ -213,6 +214,9 @@ def run(args) -> None:
     eras = coverage_eras(sel)
     era_ic = ic_summary_by_era(sel, score_col, horizon, eras)
     yearly_ic = ic_by_year(sel, score_col, horizon)
+    family_roll = family_ic_rolling(sel, horizon)
+    stress = stress_window_table(sel, score_col, decile_col, horizon,
+                                 benchmark_px=bench_px)
 
     # --- backtest (quarter end subset of the selection universe) ---
     logger.info("=== Backtest ===")
@@ -238,9 +242,9 @@ def run(args) -> None:
     ov_active = active_overrides(overrides, latest_dt)
     ov_scoreboard = score_overrides(overrides, panel)
 
-    # --- diagnostics gate ---
+    # --- diagnostics gate (placebo runs on the DEFAULT scorer) ---
     logger.info("=== Diagnostics ===")
-    diag = run_diagnostics(panel=panel, prices=prices)
+    diag = run_diagnostics(panel=panel, prices=prices, score_col=score_col)
 
     # --- export ---
     latest_date = panel["date"].max()
@@ -253,6 +257,7 @@ def run(args) -> None:
             ic_summaries=ic_summaries, decile_summaries=decile_summaries,
             calibration=calibration, comparison=comparison, promotion=promotion,
             event_study=event_study, eras=eras, era_ic=era_ic, yearly_ic=yearly_ic,
+            family_roll=family_roll, stress=stress,
             backtests={"hold_all": hold_all, "avoid_worst": avoid, "benchmark": bench},
             seg_year=seg_year, seg_regime=seg_regime, mc=mc, exclusions=exclusions,
             ov_active=ov_active, ov_scoreboard=ov_scoreboard,
@@ -292,7 +297,7 @@ def _print_summary(panel, score_col, decile_col, latest, latest_date, ic_summari
     print(f"\n{line}\nRELATIVE SELL MODEL — sector neutral relative underperformance ranking")
     print(f"{line}")
     print(f"Universe: {latest['ticker'].nunique()} names, {latest['gics_sector'].nunique()} sectors "
-          f"| {panel['date'].nunique()} quarterly cross sections | default score = {score_col}")
+          f"| {panel['date'].nunique()} cross sections ({config.REBALANCE_FREQ}) | default score = {score_col}")
     print(f"Latest cross section: {pd.Timestamp(latest_date).date()}  (horizon = {horizon}Q forward relative return)")
     if len(exclusions):
         print(f"DATA INTEGRITY: {len(exclusions)} forward return labels EXCLUDED "

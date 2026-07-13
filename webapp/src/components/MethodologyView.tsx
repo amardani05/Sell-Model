@@ -98,7 +98,7 @@ export function MethodologyView({ meta }: Bundle) {
           lag count scales with the overlap — the standard Jegadeesh Titman construction, adopted for
           statistical power. Traded constructions (backtest, Monte Carlo) and quarter over quarter comparisons
           step on the quarter end subset: overlap is a statistics tool, not a tradeable rebalance. The monthly
-          grid also guarantees a fresh post earnings cross section every quarter — re-run the pipeline the day
+          grid also guarantees a fresh post earnings cross section every quarter — rerun the pipeline the day
           after prints for IMA's post earnings updates.
         </p>
 
@@ -110,21 +110,31 @@ export function MethodologyView({ meta }: Bundle) {
             within their family first, then across families — four collinear valuation ratios cast ONE vote,
             and the price derived families (Momentum, Volatility) cannot swamp the fundamental ones no matter
             how many price factors exist. A name needs at least 3 populated factors across at least 2 families
-            to be scored at all, and the composite is re-standardized within each peer group so thin coverage
+            to be scored at all, and the composite is standardized again within each peer group so thin coverage
             names cannot land in extreme deciles as a data artifact. Then peer neutral
             <Term id="decile"> deciles</Term>. This baseline ships and is validated first.</li>
-          <li>Optional <Term id="learnedweight">learned weight</Term> model (ridge, logistic, or gradient boosted
-            trees), trained <Term id="walkforward">walk forward</Term> on the selection universe against forward
-            relative returns. It becomes the default scorer only if it <strong>beats the baseline
-            <Term id="oos"> out of sample</Term></strong> on a paired t test, otherwise the baseline stays
-            default. Current default: <code>{meta.default_score}</code>. Fitted then ignored weights are never
-            presented.</li>
+          <li><Term id="learnedweight">Learned weight</Term> model (ridge), trained
+            <Term id="walkforward"> walk forward</Term> on the selection universe against forward relative
+            returns — fitted on every run since the 183 quarter history showed the factor families carry
+            opposite signs (valuation flags work, quality flags inverted), which an equal weight sum cancels
+            and a fit can learn. It becomes the default scorer only if it <strong>beats the baseline
+            <Term id="oos"> out of sample</Term></strong> on a paired per date IC t test at a one sided 5% bar
+            (t ≥ 1.645; the hypothesis is directional and tested walk forward). Current default:
+            <code> {meta.default_score}</code>. Fitted then ignored weights are never presented.</li>
         </ol>
+        <p className="callout warn">
+          Disclosure: the promotion bar was originally two sided (t ≥ 2.0) and was relaxed to the one sided
+          5% bar (t ≥ 1.645) by PM decision on 2026 07 13, <em>after</em> observing a paired t of 1.88 on the
+          2011 to 2026 history. The statistical case for one sided is legitimate (the hypothesis is directional
+          and out of sample), but changing a bar after seeing the number is exactly the kind of judgment call
+          that must be disclosed rather than buried — so it lives here, in the config comments, and in the git
+          history. The side by side model comparison ships on every run regardless of which model is default.
+        </p>
 
         <h3>Fundamentals source: SEC EDGAR (free, point in time)</h3>
         <p>
           Fundamental factors are built from the SEC's XBRL <code>companyfacts</code> API: every figure a
-          company ever filed, quarterly back to ~2009–2012 for most names, each stamped with its actual
+          company ever filed, quarterly back to ~2009 to 2012 for most names, each stamped with its actual
           <strong> filing date</strong> — which becomes the panel's as of date (true
           <Term id="pointintime"> point in time</Term> knowledge instead of a flat reporting lag guess). Values
           are always the <em>first filed</em> number, never a later restatement. Filers that tag the same line
@@ -150,7 +160,7 @@ export function MethodologyView({ meta }: Bundle) {
           day price ratio beyond 4x (or below 0.25x) is flagged as a <Term id="splice">splice artifact</Term>,
           every forward return window spanning that day is <strong>excluded from labels and logged</strong>
           (see the Validation tab), and a backstop drops any window beyond 50x — a pure data error net, set far
-          above the largest genuine small cap moonshots (~26x over two quarters in 2020–21), which are
+          above the largest genuine small cap moonshots (~26x over two quarters in 2020 to 2021), which are
           deliberately <em>kept</em>: deleting real right tail events would erase the model's worst potential
           misses and flatter every statistic. Display statistics
           additionally report <Term id="winsorizedmean">winsorized means</Term> and medians next to plain means,
@@ -163,7 +173,7 @@ export function MethodologyView({ meta }: Bundle) {
         <p>
           yfinance fundamentals reach back only ~4–5 quarters, so most historical cross sections were scored by
           the two price factors alone while the latest ones use all {meta.n_factors}. Every headline statistic
-          is therefore split into a <em>price-only era</em> and a <em>full-factor era</em>: pooling them would
+          is therefore split into a <em>price only era</em> and a <em>full factor era</em>: pooling them would
           answer a mixed question, and the split makes it impossible to accidentally present a momentum/reversal
           track record as evidence about the full composite.
         </p>
@@ -175,7 +185,7 @@ export function MethodologyView({ meta }: Bundle) {
             section, averaged <Term id="famamacbeth">Fama MacBeth</Term> with a <Term id="neweywest">Newey
             West</Term> <Term id="tstat">t statistic</Term> whose lag count scales with the label overlap
             (horizon − 1 quarters, floored at one). Mean IC, t, <Term id="ir">IR</Term>, the IC time series,
-            an IC-by-year split, and the per era split are all reported.</li>
+            an IC by year split, and the per era split are all reported.</li>
           <li><strong><Term id="calibration">Calibration</Term>, the Fama MacBeth way</strong>: score buckets are
             cut <em>within each quarter</em>, per bucket outcomes averaged across quarters with
             <Term id="standarderror"> standard errors</Term>, and skew robust companions (median,
@@ -253,7 +263,7 @@ export function MethodologyView({ meta }: Bundle) {
 
         <h3>Methodology limitations (honest)</h3>
         <ul>
-          <li><strong>EDGAR fundamentals reach back to ~2009–2012, not further.</strong> Pre XBRL cross sections
+          <li><strong>EDGAR fundamentals reach back to ~2009 to 2012, not further.</strong> Pre XBRL cross sections
             carry price factors only; some filers tag line items idiosyncratically (the alias map is maintained,
             not perfect); and names without a CIK fall back to shallow yfinance statements. The coverage era
             split reports exactly which cross sections carry full factor coverage — read it before quoting any

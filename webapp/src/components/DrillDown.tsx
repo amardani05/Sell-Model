@@ -83,7 +83,7 @@ function riskParagraph(ticker: string, d: DrilldownName, bundle: Bundle): string
     ? ` On the absolute risk lens the name sits at the ${Math.round(d.torpedo_pct)}th torpedo percentile (${d.torpedo_tier ?? "—"}).`
     : "";
 
-  const era = bundle.validation.era_ic?.find((e) => e.era === "full-factor");
+  const era = bundle.validation.era_ic?.find((e) => e.era === "full factor");
   const gate = (era?.n_periods ?? 0) >= BASE_RATE_MIN_PERIODS;
   let baseRate = "";
   if (gate) {
@@ -154,11 +154,20 @@ function DrillDownPanel({ ticker, d, bundle, onClose }: {
         </div>
 
         <p className="muted small">
-          The score is <Term id="familybalanced">family balanced</Term>: the direction aligned peer neutral
-          <Term id="zscore"> z scores</Term> below are averaged within their family first, then across families
-          ({d.n_factors_used} factors populated), and re-standardized among {d.sector} peers in the same index.
-          Bars right of zero push the name toward the sell sleeve; bars left of zero defend it. The within sector
-          percentile says how extreme the reading is among peers (100 = worst).
+          {bundle.meta.default_score === "score_ml" ? (
+            <>The score is the <Term id="learnedweight">learned weight</Term> model's output: a
+            <Term id="walkforward"> walk forward</Term> fit (trained only on data before each date) weighs the
+            direction aligned peer neutral <Term id="zscore">z scores</Term> below — including learning which
+            families to trust and which to fade. Bars show each factor's raw red flag reading
+            ({d.n_factors_used} populated); red pushes toward the sell sleeve <em>if the factor's documented
+            direction holds</em>, and the fitted weights decide how much each one actually counts.</>
+          ) : (
+            <>The score is <Term id="familybalanced">family balanced</Term>: the direction aligned peer neutral
+            <Term id="zscore"> z scores</Term> below are averaged within their family first, then across families
+            ({d.n_factors_used} factors populated), and standardized again among {d.sector} peers in the same
+            index. Bars right of zero push the name toward the sell sleeve; bars left of zero defend it.</>
+          )}
+          {" "}The within sector percentile says how extreme the reading is among peers (100 = worst).
         </p>
 
         {sorted.length > 0 && (
@@ -238,7 +247,7 @@ function DrillDownPanel({ ticker, d, bundle, onClose }: {
 // Analyst override view: active overrides for this name + a form that DRAFTS a
 // valid CSV row. Overrides never touch the score (docs/override-layer-design.md)
 // — the site is static, so filing = appending the drafted row to
-// data/overrides.csv and re-running the pipeline.
+// data/overrides.csv and rerunning the pipeline.
 // ---------------------------------------------------------------------------
 function AnalystView({ ticker, d, bundle }: { ticker: string; d: DrilldownName; bundle: Bundle }) {
   const active = (bundle.overrides?.active ?? []).filter((o) => o.ticker === ticker);
@@ -307,13 +316,13 @@ function AnalystView({ ticker, d, bundle }: { ticker: string; d: DrilldownName; 
           </div>
           <label className="ov-note">Why (what can't the model see?)
             <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)}
-              placeholder="e.g. OCF/NI distorted by the Q1 divestiture; cash conversion normal ex-item" />
+              placeholder="e.g. OCF/NI distorted by the Q1 divestiture; cash conversion normal ex item" />
           </label>
           <div className="row-between">
             <code className="ov-row">{row}</code>
             <button className="dd-copy" disabled={!valid} onClick={copyRow}>{copied ? "Copied ✓" : "Copy CSV row"}</button>
           </div>
-          <p className="muted small">Append the row to <code>data/overrides.csv</code> and re-run
+          <p className="muted small">Append the row to <code>data/overrides.csv</code> and rerun
             <code> python main.py</code> — it will appear here and enter the scoreboard.</p>
         </div>
       )}

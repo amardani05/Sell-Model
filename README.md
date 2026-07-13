@@ -77,6 +77,7 @@ CLI flags: `--synthetic`, `--since YYYY-MM-DD`, `--horizon-q {1,2}`, `--cost-bps
 | `validate.py` | Fama MacBeth IC + Newey West t stat (lags scale with label overlap), **per date calibration with SE bands / medians / winsorized means**, **P(underperform) reliability curve**, **decile 10 event study**, **coverage era split**, IC by year, decile spread + monotonicity, per factor IC, baseline vs learned + **paired promotion test** |
 | `backtest.py` | equal weight **hold all** base + "avoid worst decile" sleeve (screen judged vs its own EW universe; IJR = context), benchmark metrics row, **calendar year + market regime segments** |
 | `simulate.py` | **IMA Monte Carlo**: distributions of random 20 name portfolios per screening tier (replaces the removed long/short sleeve) |
+| `wrds_loader.py` | **WRDS scaffold** (CRSP delisting events + reason codes, Compustat quarterly) — research license only, never exported to the public site; credentials in `.env` |
 | `deep_loader.py` | **gated** FactSet / S&P Global PIT fundamentals + estimate revision loader |
 | `webapp_export.py` | dump every table to `webapp/public/data/*.json` + `meta.json`, incl. **per name drill down**, transitions, exclusions, MC results |
 | `main.py` | orchestrator + CLI |
@@ -199,6 +200,11 @@ statistics (IC) are winsorization invariant; backtests always use raw gated retu
   *after* a name sits in (or newly enters) the worst decile, with error bands. The
   presentation ready read of what a flag has historically meant (and the same chart
   format Piper leads its deck with).
+* **"What broke, and when"** — rolling one year IC per factor FAMILY (the composite can
+  net to zero while families are strongly nonzero in opposite directions), plus a
+  **stress window table**: every named disaster (2011 downgrade, 2015/16 industrial
+  recession, Q4 2018, COVID crash, COVID junk rally, 2022 rate shock) gets its own row
+  of IC / spread / benchmark move, so regime failure is visible instead of averaged away.
 * **Decile spread** = best decile minus worst decile forward relative return, per period and
   pooled, with a t stat, plus a **monotonicity** test (Spearman of decile vs mean relative
   return; a good model is ≈ −1).

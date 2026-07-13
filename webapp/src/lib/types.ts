@@ -123,6 +123,12 @@ export interface EraICRow { era: string; mean_ic: number | null; t_stat: number 
 export interface YearlyICRow { year: number; mean_ic: number | null; n_periods: number; }
 export interface Promotion { mean_diff: number | null; t_stat: number | null; n_periods: number; promote: boolean; }
 
+export interface StressWindowRow {
+  window: string; start: string; end: string;
+  mean_ic: number | null; n_periods: number;
+  spread_mean: number | null; bench_return: number | null;
+}
+
 export interface Validation {
   ic: Record<string, ICBlock>;
   deciles: Record<string, DecileBlock>;
@@ -133,6 +139,8 @@ export interface Validation {
   eras: EraRow[];
   era_ic: EraICRow[];
   yearly_ic: YearlyICRow[];
+  family_ic_rolling: Record<string, string | number | null>[];
+  stress_windows: StressWindowRow[];
   label_winsor_pct: number;
   era_min_avg_factors: number;
 }

@@ -306,7 +306,7 @@ def coverage_eras(panel: pd.DataFrame) -> pd.DataFrame:
 
     Requires ``n_factors_used`` (added by the equal weight scorer). Dates whose
     average coverage is below ``config.ERA_MIN_AVG_FACTORS`` are the
-    "price-only" era: cross sections effectively scored by momentum + reversal
+    "price only" era: cross sections effectively scored by momentum + reversal
     alone because yfinance fundamentals do not reach back that far.
     """
     if "n_factors_used" not in panel.columns:
@@ -314,7 +314,7 @@ def coverage_eras(panel: pd.DataFrame) -> pd.DataFrame:
     cov = panel.groupby("date")["n_factors_used"].mean().reset_index()
     cov.columns = ["date", "avg_factors"]
     cov["era"] = np.where(cov["avg_factors"] >= config.ERA_MIN_AVG_FACTORS,
-                          "full-factor", "price-only")
+                          "full factor", "price only")
     return cov
 
 
@@ -344,6 +344,75 @@ def ic_by_year(panel: pd.DataFrame, score_col: str, horizon_q: int) -> pd.DataFr
     out = (ts.groupby("year")["ic"].agg(["mean", "count"]).reset_index()
              .rename(columns={"mean": "mean_ic", "count": "n_periods"}))
     return out
+
+
+# =============================================================================
+# "What broke, and when" — family level forensics
+# =============================================================================
+def family_ic_rolling(panel: pd.DataFrame, horizon_q: int, window: int = 12) -> pd.DataFrame:
+    """Rolling mean IC of each factor FAMILY's sub score, per date.
+
+    The composite can net to zero while its families are strongly nonzero in
+    opposite directions (exactly what the 2011-2026 history showed: valuation
+    flags positive, quality/accruals inverted). This series answers the
+    diagnostic question directly: WHICH family broke, and WHEN — a regime
+    chart, not a single pooled number. ``window`` is in cross sections
+    (12 monthly observations = a one year lens).
+    """
+    fam_cols = [c for c in panel.columns if c.startswith("fam_") and c.endswith("__score")]
+    frames = {}
+    for c in fam_cols:
+        label = c[len("fam_"):-len("__score")].replace("_", " ").title()
+        ts = ic_time_series(panel, c, horizon_q)
+        if ts.empty:
+            continue
+        frames[label] = ts.set_index("date")["ic"].rolling(window, min_periods=max(3, window // 2)).mean()
+    if not frames:
+        return pd.DataFrame(columns=["date"])
+    out = pd.DataFrame(frames).reset_index().rename(columns={"index": "date"})
+    return out
+
+
+def stress_window_table(panel: pd.DataFrame, score_col: str, decile_col: str,
+                        horizon_q: int,
+                        benchmark_px: pd.Series | None = None) -> pd.DataFrame:
+    """Validation stats inside each named disaster window (config.STRESS_WINDOWS).
+
+    A model that averages to zero can still be strongly wrong in exactly the
+    periods that hurt most — or genuinely protective there. Each row reports
+    the episode's mean IC, decile spread, sample size, and the benchmark's
+    move for context. Labels are forward looking FROM each date, so a window's
+    row describes flags raised DURING the episode.
+    """
+    ic_ts = ic_time_series(panel, score_col, horizon_q).set_index("date")["ic"]
+    label = f"fwd_rel_ret_{horizon_q}q"
+    d = panel[[decile_col, label, "date"]].dropna()
+    n_dec = config.N_DECILES
+
+    rows = []
+    for name, start, end in config.STRESS_WINDOWS:
+        s, e = pd.Timestamp(start), pd.Timestamp(end)
+        ic_w = ic_ts[(ic_ts.index >= s) & (ic_ts.index <= e)]
+        w = d[(d["date"] >= s) & (d["date"] <= e)]
+        spread = np.nan
+        if not w.empty:
+            per = w.groupby("date").apply(
+                lambda g: g.loc[g[decile_col] == 1, label].mean()
+                          - g.loc[g[decile_col] == n_dec, label].mean())
+            spread = float(per.mean()) if len(per) else np.nan
+        bench_ret = np.nan
+        if benchmark_px is not None and len(benchmark_px):
+            bpx = benchmark_px[(benchmark_px.index >= s) & (benchmark_px.index <= e)].dropna()
+            if len(bpx) > 1:
+                bench_ret = float(bpx.iloc[-1] / bpx.iloc[0] - 1.0)
+        rows.append({
+            "window": name, "start": start, "end": end,
+            "mean_ic": float(ic_w.mean()) if len(ic_w) else np.nan,
+            "n_periods": int(len(ic_w)),
+            "spread_mean": spread,
+            "bench_return": bench_ret,
+        })
+    return pd.DataFrame(rows)
 
 
 # =============================================================================
