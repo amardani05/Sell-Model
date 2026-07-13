@@ -14,16 +14,20 @@ Setup (one time):
     #   WRDS_PASSWORD=your_wrds_password
     # First connection may prompt to create a ~/.pgpass entry — accept it.
 
-LICENSE BOUNDARY (do not cross): WRDS data is licensed for research use by
-authorized university users. It must NEVER be exported into the public
-dashboard (webapp/public), committed to the repo, or redistributed. Use it to
-validate the EDGAR pipeline, compute clean delisting adjusted history for the
-paper/IMA writeups, and benchmark data quality — the public site keeps running
-on EDGAR + yfinance.
+LICENSE NOTE (PM decision, 2026-07-13): Amar has decided WRDS data may inform
+the dashboard on educational use grounds (IMA is a student driven fund). The
+recorded recommendation that accompanies that decision: WRDS derived AGGREGATE
+statistics (IC series, delisting adjusted backtest curves, stress tables) are
+the defensible zone — publishing per name RAW WRDS data (prices, fundamentals
+line items) on a publicly reachable site is redistribution under most WRDS
+subscription terms regardless of intent, and the subscription at risk is the
+university's. If per name WRDS data must ship, put the deployment behind
+access control first. Being a student fund changes the use case, not the
+license text.
 
-STATUS: scaffold. The queries below are written and documented but UNTESTED
-until credentials exist. Nothing in main.py imports this module yet — wiring
-happens after a first successful connection is verified interactively.
+STATUS: connection scaffold live tested 2026-07-13 — network + TLS verified,
+login rejected (see connect() docstring). Queries run the moment a working
+login exists. Nothing in main.py imports this module yet.
 """
 
 from __future__ import annotations
@@ -42,23 +46,29 @@ class WRDSUnavailable(RuntimeError):
 
 
 def connect():
-    """Open a WRDS connection from .env credentials.
+    """Open a direct SQLAlchemy engine to the WRDS Postgres service.
 
-    Returns a ``wrds.Connection``. Raises WRDSUnavailable with a actionable
-    message otherwise.
+    WRDS is plain Postgres behind the scenes (wrds-pgdata.wharton.upenn.edu:9737,
+    database ``wrds``, sslmode required). Connecting directly avoids the wrds
+    package's interactive credential prompts, which break in non interactive
+    runs. Raises WRDSUnavailable with an actionable message otherwise.
+
+    Live test 2026-07-13: connectivity + TLS verified end to end; the login
+    itself returned "PAM authentication failed" — either a password typo or a
+    student account without pgdata access (verify at wrds-www.wharton.upenn.edu
+    and ask the WRDS rep to enable API access if the web login works).
     """
     if not (config.WRDS_USERNAME and config.WRDS_PASSWORD):
         raise WRDSUnavailable(
             "WRDS credentials missing: set WRDS_USERNAME / WRDS_PASSWORD in .env "
             "(see .env.example). These are your WRDS account login, not an API key.")
-    try:
-        import wrds  # optional dependency: pip install wrds
-    except ImportError as exc:
-        raise WRDSUnavailable("The 'wrds' package is not installed: pip install wrds") from exc
-    logger.info("Connecting to WRDS as %s (research license — data stays local)",
-                config.WRDS_USERNAME)
-    return wrds.Connection(wrds_username=config.WRDS_USERNAME,
-                           wrds_password=config.WRDS_PASSWORD)
+    from urllib.parse import quote_plus
+    from sqlalchemy import create_engine
+    logger.info("Connecting to WRDS as %s", config.WRDS_USERNAME)
+    dsn = (f"postgresql+psycopg2://{config.WRDS_USERNAME}:"
+           f"{quote_plus(config.WRDS_PASSWORD)}"
+           f"@wrds-pgdata.wharton.upenn.edu:9737/wrds?sslmode=require")
+    return create_engine(dsn, connect_args={"connect_timeout": 30})
 
 
 def crsp_delisting_events(db, start: str = "2010-01-01") -> pd.DataFrame:
@@ -78,7 +88,8 @@ def crsp_delisting_events(db, start: str = "2010-01-01") -> pd.DataFrame:
          and d.dlstdt between n.namedt and n.nameenddt
         where d.dlstdt >= '{start}'
     """
-    out = db.raw_sql(q, date_cols=["dlstdt"])
+    import pandas as pd
+    out = pd.read_sql(q, db, parse_dates=["dlstdt"])
     logger.info("CRSP delistings: %d events since %s", len(out), start)
     return out
 
@@ -103,7 +114,8 @@ def compustat_quarterly(db, start: str = "2010-01-01") -> pd.DataFrame:
         where indfmt = 'INDL' and datafmt = 'STD' and popsrc = 'D'
           and consol = 'C' and datadate >= '{start}'
     """
-    out = db.raw_sql(q, date_cols=["datadate", "rdq"])
+    import pandas as pd
+    out = pd.read_sql(q, db, parse_dates=["datadate", "rdq"])
     logger.info("Compustat quarterly: %d rows since %s", len(out), start)
     return out
 
