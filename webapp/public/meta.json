@@ -1,10 +1,14 @@
 {
-  "generated_at": "2026-07-13T03:21:28.931171Z",
+  "generated_at": "2026-07-13T05:04:52.353265Z",
   "model": "Relative Sell Model (sector neutral relative underperformance ranking)",
   "universe_size": 994,
   "n_sectors": 11,
-  "n_cross_sections": 33,
-  "panel_rows": 32802,
+  "n_cross_sections": 199,
+  "rebalance_freq": "M",
+  "selection_index": "S&P 600",
+  "n_selection": 596,
+  "n_quarterly_cross_sections": 67,
+  "panel_rows": 197806,
   "n_delisted_carried": 0,
   "horizon_q": 1,
   "horizons_available": [
@@ -12,10 +16,10 @@
     2
   ],
   "benchmark": "IJR",
-  "source": "yfinance",
+  "source": "edgar",
   "cost_bps": 10.0,
   "neutralize_method": "zscore",
-  "n_factors": 15,
+  "n_factors": 19,
   "factor_groups": {
     "pe_ratio": "Valuation",
     "ev_to_ebitda": "Valuation",
@@ -23,6 +27,10 @@
     "fcf_yield": "Valuation",
     "mom_12_1": "Momentum",
     "reversal_1m": "Momentum",
+    "high_52w": "Momentum",
+    "ivol_63d": "Volatility",
+    "max_ret_1m": "Volatility",
+    "beta_252d": "Volatility",
     "roe": "Quality",
     "roa": "Quality",
     "gross_margin": "Quality",
@@ -45,21 +53,21 @@
   "use_estimate_factors": false,
   "diagnostics": {
     "placebo": {
-      "real_ic": 0.01738378708101413,
-      "real_t": 0.929845594018155,
-      "placebo_ic_mean": 0.00283052169081239,
-      "placebo_ic_std": 0.005426380784200133,
+      "real_ic": -0.0089468882467285,
+      "real_t": -0.7980212332934278,
+      "placebo_ic_mean": -5.5397180103738345e-05,
+      "placebo_ic_std": 0.002531929679873454,
       "tolerance": 0.03,
-      "passed": true
+      "passed": false
     },
     "lookahead": {
       "no_label_in_features": {
-        "n_features": 15,
+        "n_features": 19,
         "leak_columns": [],
         "passed": true
       },
       "price_factor_truncation": {
-        "checked": 11262,
+        "checked": 19450,
         "mismatches": 0,
         "passed": true
       },
@@ -79,13 +87,14 @@
       },
       "passed": true
     },
-    "all_passed": true
+    "all_passed": false
   },
   "exclusions_summary": {
-    "n_labels_excluded": 6,
-    "n_tickers": 2,
+    "n_labels_excluded": 64,
+    "n_tickers": 7,
     "reasons": {
-      "splice_window": 6
+      "splice_window": 63,
+      "extreme_return": 1
     }
   },
   "mc_portfolio_size": 20,
@@ -114,5 +123,5 @@
     "Mainstream",
     "Elevated"
   ],
-  "n_torpedo_features": 16
+  "n_torpedo_features": 21
 }

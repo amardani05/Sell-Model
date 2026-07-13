@@ -1,9 +1,9 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Bundle, fmt, fmtSigned, decileColor } from "../lib/data";
 import { Plot } from "./Plot";
 import { DataTable } from "./DataTable";
 import { Term } from "./Term";
-import { Ticker } from "./TickerFlag";
+import { Ticker, UniverseToggle, inUniverse } from "./TickerFlag";
 import { ScoreRow } from "../lib/types";
 
 export function Overview({ meta, scores, validation, exclusions }: Bundle) {
@@ -13,9 +13,10 @@ export function Overview({ meta, scores, validation, exclusions }: Bundle) {
   const diag = meta.diagnostics;
   const fullEra = validation.era_ic?.find((e) => e.era === "full-factor");
   const priceEra = validation.era_ic?.find((e) => e.era === "price-only");
+  const [universe, setUniverse] = useState<string>(meta.selection_index ?? "S&P 600");
 
   const worst = scores
-    .filter((r) => r.score !== null)
+    .filter((r) => r.score !== null && inUniverse(r.index_name, universe))
     .sort((a, b) => (b.score ?? -99) - (a.score ?? -99))
     .slice(0, 12);
 
@@ -109,7 +110,14 @@ export function Overview({ meta, scores, validation, exclusions }: Bundle) {
       </section>
 
       <section className="card span-12">
-        <h3>Top sell candidates — highest <Term id="relativereturn">relative risk</Term> score (latest cross section)</h3>
+        <div className="row-between">
+          <h3>Top sell candidates — highest <Term id="relativereturn">relative risk</Term> score (latest cross section)</h3>
+          <UniverseToggle value={universe} onChange={setUniverse} counts={meta.index_counts} />
+        </div>
+        <p className="muted small">
+          Defaults to the <Term id="selectionuniverse">selection universe</Term> (S&amp;P 600) — the names IMA
+          actually picks from. S&amp;P 400 graduates are scored against 400 peers for monitoring only.
+        </p>
         <DataTable<ScoreRow>
           rows={worst}
           rowKey={(r) => r.ticker}

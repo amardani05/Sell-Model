@@ -36,11 +36,19 @@ def neutral_columns(panel: pd.DataFrame) -> list[str]:
     return [c for c in panel.columns if c.endswith("__n")]
 
 
+def _group_keys(panel: pd.DataFrame) -> list[str]:
+    keys = ["date", "gics_sector"]
+    if "index_name" in panel.columns:
+        keys.append("index_name")
+    return keys
+
+
 # =============================================================================
 # Sector neutral decile
 # =============================================================================
 def assign_sector_deciles(panel: pd.DataFrame, score_col: str, n: int = config.N_DECILES) -> pd.Series:
-    """Within each (date, sector), bucket ``score_col`` into ``n`` deciles.
+    """Within each peer group (date, sector[, index]), bucket ``score_col``
+    into ``n`` deciles.
 
     Decile 1 = lowest score (best expected relative return), decile n = highest
     score (worst — the sell sleeve). Robust to ties / small groups via rank.
@@ -54,25 +62,63 @@ def assign_sector_deciles(panel: pd.DataFrame, score_col: str, n: int = config.N
         r = s.rank(method="first", pct=True)
         return np.ceil(r * n).clip(1, n)
 
-    return panel.groupby(["date", "gics_sector"], group_keys=False)[score_col].apply(_decile)
+    return panel.groupby(_group_keys(panel), group_keys=False)[score_col].apply(_decile)
 
 
 # =============================================================================
-# Equal weight baseline
+# Family balanced baseline (the "equal weight by information" composite)
 # =============================================================================
 def equal_weight_score(panel: pd.DataFrame) -> pd.DataFrame:
-    """Add ``score_ew`` (mean of available neutral factors) + ``decile_ew``."""
+    """Add ``score_ew`` + ``decile_ew`` via the FAMILY BALANCED composite.
+
+    Three deliberate steps replace the old flat mean over all factors:
+
+    1. **Family means first.** Factors are averaged within their family
+       (config.FACTOR_GROUPS), then the family scores are averaged. Four
+       collinear valuation ratios therefore cast ONE family vote — and the
+       price derived families (Momentum, Volatility) can never swamp the
+       fundamentals no matter how many price factors are added.
+    2. **Coverage floor.** A name needs >= MIN_FACTORS_FOR_SCORE populated
+       factors across >= MIN_FAMILIES_FOR_SCORE families, else it is not
+       scored (never guessed).
+    3. **Re-standardization.** The composite is z scored again within each
+       peer group, because the mean of 2 family scores has a different
+       variance than the mean of 6 — without this, thin coverage names land
+       in extreme deciles as a pure data artifact.
+    """
     cols = neutral_columns(panel)
     if not cols:
         raise ValueError("No neutralized factor columns found; run neutralize_factors first")
     df = panel.copy()
-    # mean over available factors; require at least one non NaN factor.
-    df["n_factors_used"] = df[cols].notna().sum(axis=1)
-    df["score_ew"] = df[cols].mean(axis=1, skipna=True)
-    df.loc[df["n_factors_used"] == 0, "score_ew"] = np.nan
+
+    fam_of = {f"{f}__n": g for f, g in config.FACTOR_GROUPS.items() if f"{f}__n" in cols}
+    families = sorted(set(fam_of.values()))
+    fam_cols: dict[str, list[str]] = {g: [c for c, gg in fam_of.items() if gg == g] for g in families}
+
+    fam_scores = pd.DataFrame(index=df.index)
+    for g, gcols in fam_cols.items():
+        fam_scores[g] = df[gcols].mean(axis=1, skipna=True)
+
+    df["n_factors_used"] = df[list(fam_of)].notna().sum(axis=1)
+    df["n_families_used"] = fam_scores.notna().sum(axis=1)
+    raw_score = fam_scores.mean(axis=1, skipna=True)
+    thin = ((df["n_factors_used"] < config.MIN_FACTORS_FOR_SCORE)
+            | (df["n_families_used"] < config.MIN_FAMILIES_FOR_SCORE))
+    raw_score[thin] = np.nan
+    df["score_ew_raw"] = raw_score
+
+    # Re-standardize within peer group so coverage regimes are comparable.
+    def _restd(s: pd.Series) -> pd.Series:
+        mu, sd = s.mean(), s.std(ddof=0)
+        return (s - mu) / sd if (sd and np.isfinite(sd) and sd > 0) else s * 0.0
+
+    df["score_ew"] = (df.groupby(_group_keys(df), group_keys=False)["score_ew_raw"]
+                        .apply(_restd))
     df["decile_ew"] = assign_sector_deciles(df, "score_ew")
-    logger.info("Equal weight score: %d/%d rows scored (>=1 factor)",
-                int((df["n_factors_used"] > 0).sum()), len(df))
+    logger.info("Family balanced score: %d/%d rows scored (>=%d factors over >=%d families; "
+                "%d families active)",
+                int(df["score_ew"].notna().sum()), len(df),
+                config.MIN_FACTORS_FOR_SCORE, config.MIN_FAMILIES_FOR_SCORE, len(families))
     return df
 
 
@@ -119,14 +165,17 @@ def learned_weight_score(
     df["score_ml"] = np.nan
 
     dates = sorted(df["date"].unique())
-    X_all = df[cols].fillna(0.0).values
     pos = {d: df.index[df["date"] == d] for d in dates}
+    # Train on the SELECTION universe only (IMA picks from the S&P 600); the
+    # fitted model still scores every row so graduates stay monitorable.
+    in_selection = (df["index_name"] == config.SELECTION_INDEX
+                    if "index_name" in df.columns else pd.Series(True, index=df.index))
 
     n_fit = 0
     for i, t in enumerate(dates):
         if i < min_train_periods:
             continue
-        train_mask = df["date"] < t
+        train_mask = (df["date"] < t) & in_selection
         tr = df[train_mask & df[label].notna()]
         if len(tr) < 50:
             continue

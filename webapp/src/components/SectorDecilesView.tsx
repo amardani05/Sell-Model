@@ -3,34 +3,41 @@ import { Bundle, fmtSigned, decileColor } from "../lib/data";
 import { Plot } from "./Plot";
 import { DataTable } from "./DataTable";
 import { Term } from "./Term";
-import { Ticker } from "./TickerFlag";
+import { Ticker, UniverseToggle, inUniverse } from "./TickerFlag";
 import { ScoreRow } from "../lib/types";
 
 export function SectorDecilesView({ meta, scores, sectorDeciles }: Bundle) {
   const sectors = sectorDeciles.sectors;
   const n = sectorDeciles.n_deciles;
   const [sector, setSector] = useState<string>(sectors[0] ?? "");
+  const [universe, setUniverse] = useState<string>(meta.selection_index ?? "S&P 600");
 
-  // heatmap z[sectorIdx][decileIdx] = count
+  const inU = scores.filter((r) => r.decile != null && inUniverse(r.index_name, universe));
+  // heatmap z[sectorIdx][decileIdx] = count, computed client side so the
+  // universe filter applies (deciles are cut per index, so counts stay exact).
   const z: number[][] = sectors.map((s) =>
     Array.from({ length: n }, (_, di) =>
-      sectorDeciles.counts.find((c) => c.gics_sector === s && c.decile === di + 1)?.n ?? 0
+      inU.filter((r) => r.gics_sector === s && r.decile === di + 1).length
     )
   );
 
-  const inSector = scores
+  const inSector = inU
     .filter((r) => r.gics_sector === sector && r.score !== null)
     .sort((a, b) => (b.score ?? -99) - (a.score ?? -99));
 
   return (
     <div className="grid">
       <section className="card span-12">
-        <h2><Term id="sectorneutral">Sector neutral</Term> decile map</h2>
+        <div className="row-between">
+          <h2><Term id="sectorneutral">Sector neutral</Term> decile map</h2>
+          <UniverseToggle value={universe} onChange={setUniverse} counts={meta.index_counts} />
+        </div>
         <p className="muted">
-          <Term id="decile">Deciles</Term> are formed <strong>within each <Term id="gics">GICS</Term> sector at
-          each date</strong>, so every sector contributes its own worst names and the model never just flags
-          whole cheap or expensive sectors. Decile 1 = best expected relative return, decile {n} = the sell
-          sleeve. Counts are the latest cross section.
+          <Term id="decile">Deciles</Term> are formed <strong>within each <Term id="gics">GICS</Term> sector and
+          index at each date</strong> — S&amp;P 600 names against 600 peers only — so every sector contributes
+          its own worst names and the model never just flags whole cheap or expensive sectors. Decile 1 = best
+          expected relative return, decile {n} = the sell sleeve. Counts are the latest cross section for the
+          <Term id="selectionuniverse"> selection universe</Term> shown in the toggle.
         </p>
         <div className="help-note">
           <strong>Why compare inside a sector.</strong> Whole sectors move together and trade at very different

@@ -196,7 +196,11 @@ def export_drilldown(panel: pd.DataFrame, latest: pd.DataFrame,
     factors = [f for f in config.active_factors() if f"{f}__n" in latest.columns]
     dates = sorted(panel["date"].unique())
     latest_date = dates[-1]
-    prev_date = dates[-2] if len(dates) > 1 else None
+    # QoQ comparison point: the nearest cross section ~one quarter back (the
+    # grid is monthly, so "previous date" would be last month, not last quarter).
+    target = pd.Timestamp(latest_date) - pd.Timedelta(days=75)
+    older = [d for d in dates if d <= target]
+    prev_date = older[-1] if older else (dates[-2] if len(dates) > 1 else None)
     prev = panel[panel["date"] == prev_date] if prev_date is not None else pd.DataFrame()
     prev_by_tk = prev.set_index("ticker") if not prev.empty else pd.DataFrame()
 
@@ -266,7 +270,13 @@ def export_overrides(ov_active: pd.DataFrame, ov_scoreboard: dict) -> None:
 
 
 def export_transitions(panel: pd.DataFrame, decile_col: str) -> None:
-    """Decile persistence: the transition matrix + this quarter's flag churn."""
+    """Decile persistence: the transition matrix + this quarter's flag churn.
+
+    Steps on the quarter end subset so "next quarter" means next QUARTER even
+    though the scoring grid is monthly.
+    """
+    from feature_engine import quarter_end_subset
+    panel = quarter_end_subset(panel)
     d = panel.dropna(subset=[decile_col])[["date", "ticker", decile_col]].copy()
     d[decile_col] = d[decile_col].astype(int)
     dates = sorted(d["date"].unique())
@@ -314,13 +324,19 @@ def export_transitions(panel: pd.DataFrame, decile_col: str) -> None:
 def export_meta(*, universe_size, n_sectors, horizon_q, source, learned_enabled,
                 default_score, membership_is_pit, diagnostics, n_cross_sections,
                 cost_bps, panel_rows, n_delisted, exclusions_summary=None,
-                index_counts=None) -> None:
+                index_counts=None, rebalance_freq="Q", selection_index=None,
+                n_selection=None, n_quarterly_cross_sections=None) -> None:
     payload = {
         "generated_at": datetime.utcnow().isoformat() + "Z",
         "model": "Relative Sell Model (sector neutral relative underperformance ranking)",
         "universe_size": int(universe_size),
         "n_sectors": int(n_sectors),
         "n_cross_sections": int(n_cross_sections),
+        "rebalance_freq": rebalance_freq,
+        "selection_index": selection_index,
+        "n_selection": int(n_selection) if n_selection is not None else None,
+        "n_quarterly_cross_sections": (int(n_quarterly_cross_sections)
+                                       if n_quarterly_cross_sections is not None else None),
         "panel_rows": int(panel_rows),
         "n_delisted_carried": int(n_delisted),
         "horizon_q": int(horizon_q),

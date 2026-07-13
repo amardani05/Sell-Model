@@ -42,6 +42,10 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
           </div>
         </div>
         <p className="muted">
+          Every statistic on this page describes the <Term id="selectionuniverse">selection universe</Term>
+          {" "}({meta.selection_index ?? "S&P 600"}) on a <strong>monthly scoring grid</strong>
+          {" "}({meta.n_cross_sections} <Term id="overlapping">overlapping cross sections</Term>
+          {meta.n_quarterly_cross_sections ? <> — traded sleeves step on the {meta.n_quarterly_cross_sections} quarter ends</> : null}).
           Sign convention: <Term id="ic">IC</Term> = minus the <Term id="spearman">Spearman correlation</Term>
           between the score and the forward relative return, so <strong>positive means skill</strong>. The mean
           IC is averaged <Term id="famamacbeth">Fama MacBeth</Term> style with a <Term id="neweywest">Newey
@@ -61,9 +65,9 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
           <>
             <h3 style={{ marginTop: 6 }}><Term id="coveragera">Coverage eras</Term> — which model does this history actually test?</h3>
             <p className="muted small">
-              yfinance fundamentals reach back only ~4–5 quarters, so older cross sections were scored by the two
-              price factors alone. Any headline number that pools the eras is answering a mixed question; read
-              this split first.
+              Cross sections before XBRL fundamentals become available (~2009–2012 via SEC EDGAR) are scored by
+              the price factors alone. Any headline number that pools the eras is answering a mixed question;
+              read this split first.
             </p>
             <DataTable<EraICRow>
               rows={eraIC}

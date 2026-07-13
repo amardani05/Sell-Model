@@ -48,6 +48,30 @@ export const FACTOR_META: Record<string, FactorMeta> = {
     redFlag: "HIGH last month return — recent pops tend to give some back",
     anomaly: "Short term reversal effect",
   },
+  high_52w: {
+    label: "52-week high proximity", family: "Momentum",
+    formula: "price ÷ trailing 252-day maximum price",
+    redFlag: "FAR below the 52-week high — beaten-down names keep lagging",
+    anomaly: "52-week high effect (George & Hwang 2004)",
+  },
+  ivol_63d: {
+    label: "Idiosyncratic volatility", family: "Volatility",
+    formula: "std of daily return residuals vs the benchmark, trailing ~63 days",
+    redFlag: "HIGH stock-specific volatility vs sector peers",
+    anomaly: "IVOL puzzle (Ang, Hodrick, Xing, Zhang 2006)",
+  },
+  max_ret_1m: {
+    label: "MAX (lottery)", family: "Volatility",
+    formula: "largest single-day return over the trailing ~21 days",
+    redFlag: "HIGH recent single-day pop — lottery-like names disappoint",
+    anomaly: "MAX effect (Bali, Cakici, Whitelaw 2011)",
+  },
+  beta_252d: {
+    label: "Market beta", family: "Volatility",
+    formula: "rolling 252-day beta of daily returns vs the benchmark",
+    redFlag: "HIGH beta vs sector peers",
+    anomaly: "Betting against beta (Frazzini & Pedersen 2014)",
+  },
   roe: {
     label: "ROE", family: "Quality",
     formula: "trailing 12m net income ÷ shareholders' equity",
@@ -118,8 +142,9 @@ export const FACTOR_META: Record<string, FactorMeta> = {
 
 // Family display order + colors shared with the Factor IC tab.
 export const FAMILY_COLOR: Record<string, string> = {
-  Valuation: "#4e79a7", Momentum: "#f28e2b", Quality: "#59a14f",
-  Investment: "#b07aa1", "Earnings Quality": "#e15759", Estimates: "#9c755f",
+  Valuation: "#4e79a7", Momentum: "#f28e2b", Volatility: "#17becf",
+  Quality: "#59a14f", Investment: "#b07aa1", "Earnings Quality": "#e15759",
+  Estimates: "#9c755f",
 };
 
 export function factorLabel(f: string): string {

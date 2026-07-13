@@ -143,6 +143,34 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     label: "base rate",
     def: "The historical frequency of an outcome, for example how often decile 10 names went on to trail their sector. Research notes should cite base rates only once there is enough full factor history to estimate them honestly.",
   },
+  familybalanced: {
+    label: "family balanced",
+    def: "Factors are averaged within their family first (valuation, momentum, volatility, quality, investment, earnings quality), then the family scores are averaged. Four overlapping valuation ratios cast one vote, not four — and adding more price factors can never let price signals swamp the fundamentals.",
+  },
+  selectionuniverse: {
+    label: "selection universe",
+    def: "The S&P 600 — the index IMA actually picks from. S&P 400 graduates stay scored for monitoring, but they are ranked against 400 peers only and every headline statistic (IC, calibration, backtest, simulation) is computed on the 600 alone.",
+  },
+  overlapping: {
+    label: "overlapping observations",
+    def: "Scoring monthly while the label looks a quarter ahead means adjacent observations share part of the same forward window. That is legitimate (it is the standard construction) as long as the t statistic corrects for the overlap, which the Newey West lags here do.",
+  },
+  ivol: {
+    label: "idiosyncratic volatility",
+    def: "The part of a stock's daily wiggle that the market cannot explain. High IVOL names have historically gone on to underperform (the volatility puzzle), and they are also the hardest names to hold with conviction.",
+  },
+  maxeffect: {
+    label: "MAX effect",
+    def: "Stocks with a recent huge single day gain attract lottery seeking buyers and then tend to disappoint. Measured as the biggest daily return over the last month.",
+  },
+  beta: {
+    label: "beta",
+    def: "How much a stock moves per unit of market move. High beta names have historically delivered poor risk adjusted returns (betting against beta).",
+  },
+  high52w: {
+    label: "52 week high",
+    def: "Price as a fraction of the trailing one year high. Names far below their high have tended to keep lagging peers; names near the high tend to keep performing.",
+  },
   winsorize: {
     label: "winsorize",
     def: "Clip extreme values to a high and low percentile before scoring, so a single outlier does not dominate.",

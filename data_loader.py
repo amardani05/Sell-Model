@@ -49,28 +49,30 @@ def _cache_is_fresh(path: Path, max_age: int = config.CACHE_MAX_AGE_SECONDS) -> 
 # =============================================================================
 # Prices
 # =============================================================================
-def _extract_close(raw: pd.DataFrame, tickers: list[str]) -> pd.DataFrame:
-    """Normalize yfinance output into a flat adjusted close DataFrame."""
+def _extract_field(raw: pd.DataFrame, tickers: list[str], field: str) -> pd.DataFrame:
+    """Normalize one field ("Close" / "Volume") out of yfinance output."""
     if raw is None or raw.empty:
         return pd.DataFrame()
     if isinstance(raw.columns, pd.MultiIndex):
-        if "Close" in raw.columns.get_level_values(0):
-            close = raw.xs("Close", axis=1, level=0)
-        elif "Close" in raw.columns.get_level_values(-1):
-            close = raw.xs("Close", axis=1, level=-1)
+        if field in raw.columns.get_level_values(0):
+            out = raw.xs(field, axis=1, level=0)
+        elif field in raw.columns.get_level_values(-1):
+            out = raw.xs(field, axis=1, level=-1)
         else:
-            close = raw["Close"] if "Close" in raw.columns else pd.DataFrame()
+            out = raw[field] if field in raw.columns else pd.DataFrame()
     else:
-        if "Close" in raw.columns:
-            close = raw[["Close"]].copy()
+        if field in raw.columns:
+            out = raw[[field]].copy()
             if len(tickers) == 1:
-                close.columns = [tickers[0]]
+                out.columns = [tickers[0]]
         else:
-            close = raw.copy()
-    return close.dropna(axis=1, how="all")
+            out = raw.copy() if field == "Close" else pd.DataFrame()
+    return out.dropna(axis=1, how="all")
 
 
-def _download_batch(tickers: list[str], start: str, end: str, max_retries: int = 2) -> pd.DataFrame:
+def _download_batch(tickers: list[str], start: str, end: str,
+                    max_retries: int = 2) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """One yfinance batch -> (adjusted close, volume)."""
     last_exc: Exception | None = None
     for attempt in range(max_retries + 1):
         try:
@@ -78,13 +80,13 @@ def _download_batch(tickers: list[str], start: str, end: str, max_retries: int =
                 tickers=tickers, start=start, end=end, progress=False,
                 auto_adjust=True, multi_level_index=False, ignore_tz=True, threads=True,
             )
-            return _extract_close(raw, tickers)
+            return _extract_field(raw, tickers, "Close"), _extract_field(raw, tickers, "Volume")
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
             logger.warning("yfinance batch attempt %d failed: %s", attempt + 1, exc)
             time.sleep(2 + attempt * 2)
     logger.error("yfinance batch failed after retries: %s", last_exc)
-    return pd.DataFrame()
+    return pd.DataFrame(), pd.DataFrame()
 
 
 def download_prices(
@@ -92,38 +94,47 @@ def download_prices(
     years: int = config.PRICE_HISTORY_YEARS,
     force_refresh: bool = False,
     cache_path: Path = config.PRICE_CACHE,
+    start: str | None = None,
 ) -> pd.DataFrame:
     """Wide daily adjusted close matrix (index = date, columns = ticker).
 
     Delisting aware: columns that terminate early are kept. Cached to
     ``cache_path`` (the benchmark download passes its own path so a single
-    ticker fetch never clobbers the universe price cache).
+    ticker fetch never clobbers the universe price cache). The main universe
+    fetch starts at ``config.PRICE_HISTORY_START`` (2010) and also writes the
+    daily VOLUME matrix to ``config.VOLUME_CACHE`` (Amihud illiquidity input).
     """
+    is_universe_cache = cache_path == config.PRICE_CACHE
     if not force_refresh and _cache_is_fresh(cache_path):
         logger.info("Loading cached prices from %s", cache_path)
         return pd.read_parquet(cache_path)
 
     end_dt = datetime.utcnow().date()
-    start_dt = end_dt - timedelta(days=int(years * 365.25) + 10)
-    start, end = start_dt.isoformat(), end_dt.isoformat()
+    if start is None:
+        start = (config.PRICE_HISTORY_START if is_universe_cache
+                 else (end_dt - timedelta(days=int(years * 365.25) + 10)).isoformat())
+    end = end_dt.isoformat()
     tickers = sorted({t.upper() for t in tickers})
-    logger.info("Downloading %d tickers of prices, %s..%s", len(tickers), start, end)
+    logger.info("Downloading %d tickers of prices+volume, %s..%s", len(tickers), start, end)
 
-    frames: list[pd.DataFrame] = []
+    px_frames: list[pd.DataFrame] = []
+    vol_frames: list[pd.DataFrame] = []
     n_batches = (len(tickers) + config.BATCH_SIZE - 1) // config.BATCH_SIZE
     for i in range(0, len(tickers), config.BATCH_SIZE):
         batch = tickers[i : i + config.BATCH_SIZE]
         logger.info("  prices batch %d/%d (%d tickers)", i // config.BATCH_SIZE + 1, n_batches, len(batch))
-        close = _download_batch(batch, start, end)
+        close, vol = _download_batch(batch, start, end)
         if not close.empty:
-            frames.append(close)
+            px_frames.append(close)
+        if not vol.empty:
+            vol_frames.append(vol)
         if i + config.BATCH_SIZE < len(tickers):
             time.sleep(config.BATCH_DELAY_SECONDS)
 
-    if not frames:
+    if not px_frames:
         raise RuntimeError("yfinance returned no price data for any batch")
 
-    prices = pd.concat(frames, axis=1)
+    prices = pd.concat(px_frames, axis=1)
     prices = prices.loc[:, ~prices.columns.duplicated()].sort_index()
     # Keep names with at least MIN_TRADING_DAYS of data ANYWHERE in the window
     # (delisting aware: a name alive for 2y then gone still qualifies).
@@ -134,7 +145,24 @@ def download_prices(
     logger.info("Prices: kept %d tickers (dropped %d for < %d obs)",
                 prices.shape[1], dropped, config.MIN_TRADING_DAYS)
     prices.to_parquet(cache_path)
+
+    if is_universe_cache and vol_frames:
+        volumes = pd.concat(vol_frames, axis=1)
+        volumes = volumes.loc[:, ~volumes.columns.duplicated()].sort_index()
+        volumes = volumes[[c for c in volumes.columns if c in prices.columns]]
+        volumes.to_parquet(config.VOLUME_CACHE)
+        logger.info("Volumes: cached %d tickers to %s", volumes.shape[1], config.VOLUME_CACHE)
     return prices
+
+
+def load_volumes() -> pd.DataFrame | None:
+    """Cached daily volume matrix, if the last price download produced one."""
+    if config.VOLUME_CACHE.exists():
+        try:
+            return pd.read_parquet(config.VOLUME_CACHE)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("volume cache unreadable: %s", exc)
+    return None
 
 
 def download_benchmark(ticker: str = config.BENCHMARK_TICKER,

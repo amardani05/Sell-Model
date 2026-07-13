@@ -154,10 +154,11 @@ function DrillDownPanel({ ticker, d, bundle, onClose }: {
         </div>
 
         <p className="muted small">
-          The score is the plain average of the direction aligned sector neutral factor
-          <Term id="zscore"> z scores</Term> below (over the {d.n_factors_used} populated factors). Bars right of
-          zero push the name toward the sell sleeve; bars left of zero defend it. The within sector percentile
-          says how extreme the reading is among {d.sector} peers (100 = worst).
+          The score is <Term id="familybalanced">family balanced</Term>: the direction aligned peer neutral
+          <Term id="zscore"> z scores</Term> below are averaged within their family first, then across families
+          ({d.n_factors_used} factors populated), and re-standardized among {d.sector} peers in the same index.
+          Bars right of zero push the name toward the sell sleeve; bars left of zero defend it. The within sector
+          percentile says how extreme the reading is among peers (100 = worst).
         </p>
 
         {sorted.length > 0 && (

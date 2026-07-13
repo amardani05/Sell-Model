@@ -44,11 +44,12 @@ def _setup_logging(verbose: bool) -> None:
 # =============================================================================
 # Panel construction
 # =============================================================================
-def build_real_panel(args) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Return (panel, prices, exclusions) from live data."""
-    from data_loader import download_prices, fetch_fundamentals, load_short_interest
-    from feature_engine import build_panel, _quarter_end_dates
-    from universe import all_known_tickers, membership_panel
+def build_real_panel(args) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Series]:
+    """Return (panel, prices, exclusions, benchmark_px) from live data."""
+    from data_loader import (download_prices, download_benchmark, fetch_fundamentals,
+                             load_short_interest, load_volumes)
+    from feature_engine import build_panel, _rebalance_dates, _fundamental_timeseries
+    from universe import all_known_tickers, membership_panel, index_membership_map
 
     logger.info("=== STEP 1: point in time universe ===")
     uni = all_known_tickers()
@@ -57,39 +58,75 @@ def build_real_panel(args) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         tickers = sorted(tickers)[: args.max_tickers]
         logger.info("Subset to %d tickers (--max-tickers)", len(tickers))
 
-    logger.info("=== STEP 2: prices (deep history) ===")
-    prices = download_prices(tickers + [config.BENCHMARK_TICKER],
-                             years=config.PRICE_HISTORY_YEARS, force_refresh=args.refresh)
+    logger.info("=== STEP 2: prices + volume (deep history, %s ->) ===",
+                config.PRICE_HISTORY_START)
+    prices = download_prices(tickers + [config.BENCHMARK_TICKER], force_refresh=args.refresh)
     prices = prices[[c for c in prices.columns if c != config.BENCHMARK_TICKER]]
+    volumes = load_volumes()
+    try:
+        bench_px = download_benchmark(years=config.PRICE_HISTORY_YEARS,
+                                      force_refresh=args.refresh)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Benchmark fetch failed: %s (beta/ivol will be skipped)", exc)
+        bench_px = pd.Series(dtype=float)
 
-    logger.info("=== STEP 3: fundamentals + short interest ===")
+    logger.info("=== STEP 3: fundamentals (source=%s) + short interest ===", args.source)
     bundles = fetch_fundamentals(tickers, force_refresh=args.refresh)
     short_int = load_short_interest(bundles)
 
-    logger.info("=== STEP 4: membership panel ===")
-    q_dates = _quarter_end_dates(prices)
-    mem = membership_panel(q_dates)
+    fund_override = None
+    if args.source == "edgar":
+        from edgar_loader import fetch_edgar_fundamentals
+        edgar_ts = fetch_edgar_fundamentals(tickers, force_refresh=args.refresh)
+        # yfinance fallback for names EDGAR could not serve (missing CIK etc.)
+        fund_override = dict(edgar_ts)
+        n_fallback = 0
+        for tk in tickers:
+            if tk in fund_override or tk not in bundles:
+                continue
+            try:
+                ts = _fundamental_timeseries(bundles[tk])
+                if not ts.empty:
+                    fund_override[tk] = ts
+                    n_fallback += 1
+            except Exception:  # noqa: BLE001
+                continue
+        logger.info("Fundamentals: %d EDGAR + %d yfinance fallback tickers",
+                    len(edgar_ts), n_fallback)
+
+    logger.info("=== STEP 4: membership panel (%s grid) ===", config.REBALANCE_FREQ)
+    r_dates = _rebalance_dates(prices)
+    mem = membership_panel(r_dates)
+    # Stamp per name index membership (600 vs 400): peer groups, deciles, and
+    # the relative label median all separate the two.
+    imap = index_membership_map()
+    unknown = mem.loc[~mem["ticker"].isin(imap), "ticker"].nunique()
+    if unknown:
+        logger.warning("membership: %d tickers missing an index label; defaulting to %s",
+                       unknown, config.SELECTION_INDEX)
+    mem["index_name"] = mem["ticker"].map(imap).fillna(config.SELECTION_INDEX)
 
     # Optional estimate factors — gated; returns None unless wired + .env set.
     estimate_ts = None
     if config.USE_ESTIMATE_FACTORS:
         from deep_loader import estimate_timeseries, DeepHistoryUnavailable
         try:
-            estimate_ts = estimate_timeseries(tickers, q_dates[0], q_dates[-1], source=args.source)
+            estimate_ts = estimate_timeseries(tickers, r_dates[0], r_dates[-1], source=args.source)
         except (DeepHistoryUnavailable, NotImplementedError) as exc:
             logger.warning("Estimate factors requested but unavailable (%s); dropping them", exc)
 
     logger.info("=== STEP 5: panel assembly ===")
     panel, exclusions = build_panel(prices, bundles, mem, short_interest=short_int,
-                                    estimate_ts=estimate_ts)
-    return panel, prices, exclusions
+                                    estimate_ts=estimate_ts, volumes=volumes,
+                                    benchmark_px=bench_px, fund_ts_override=fund_override)
+    return panel, prices, exclusions, bench_px
 
 
-def build_synth_panel(args) -> tuple[pd.DataFrame, None, pd.DataFrame]:
+def build_synth_panel(args) -> tuple[pd.DataFrame, None, pd.DataFrame, pd.Series]:
     from diagnostics.synth import make_synthetic_panel
     logger.info("=== Synthetic panel (deterministic, no network) ===")
     empty_exclusions = pd.DataFrame(columns=["date", "ticker", "horizon_q", "reason", "value"])
-    return make_synthetic_panel(), None, empty_exclusions
+    return make_synthetic_panel(), None, empty_exclusions, pd.Series(dtype=float)
 
 
 # =============================================================================
@@ -100,7 +137,7 @@ def run(args) -> None:
     config.USE_LEARNED_WEIGHTS = args.learned_weights or config.USE_LEARNED_WEIGHTS
     horizon = args.horizon_q
 
-    from feature_engine import neutralize_factors
+    from feature_engine import neutralize_factors, quarter_end_subset
     from model import equal_weight_score, learned_weight_score
     from validate import (summarize_ic, decile_analysis, calibration_fm,
                           decile_event_study, coverage_eras, ic_summary_by_era,
@@ -113,8 +150,8 @@ def run(args) -> None:
     import webapp_export
     from universe import has_real_membership
 
-    panel, prices, exclusions = (build_synth_panel(args) if args.synthetic
-                                 else build_real_panel(args))
+    panel, prices, exclusions, bench_px = (build_synth_panel(args) if args.synthetic
+                                           else build_real_panel(args))
     if panel.empty:
         raise SystemExit("Panel is empty — check data sources / universe.")
 
@@ -132,12 +169,15 @@ def run(args) -> None:
 
     # Decide the default score HONESTLY: the equal weight baseline stays the
     # default unless the learned model beats it out of sample by a PAIRED
-    # Newey West t test (a point estimate edge is noise, not a win).
-    comparison = compare_models(panel, horizon)
+    # Newey West t test (a point estimate edge is noise, not a win). Judged on
+    # the SELECTION universe — the names IMA actually picks from.
+    sel_for_choice = (panel[panel["index_name"] == config.SELECTION_INDEX]
+                      if "index_name" in panel.columns else panel)
+    comparison = compare_models(sel_for_choice, horizon)
     score_col = "score_ew"
     promotion = None
     if config.USE_LEARNED_WEIGHTS and "score_ml" in panel.columns and panel["score_ml"].notna().any():
-        promotion = paired_ic_test(panel, "score_ml", "score_ew", horizon)
+        promotion = paired_ic_test(sel_for_choice, "score_ml", "score_ew", horizon)
         if promotion["promote"]:
             score_col = "score_ml"
             logger.info("Learned model PROMOTED (paired IC diff %+.4f, t=%+.2f >= %.1f)",
@@ -152,41 +192,44 @@ def run(args) -> None:
     from torpedo import compute_torpedo
     panel = compute_torpedo(panel)
 
-    # --- validate ---
-    logger.info("=== Validation ===")
-    ic_summaries = {h: summarize_ic(panel, score_col, h) for h in config.HORIZONS_Q}
-    decile_summaries = {h: decile_analysis(panel, decile_col, h) for h in config.HORIZONS_Q}
-    factor_ic = factor_ic_table(panel, horizon)
-    calibration = calibration_fm(panel, score_col, horizon)
-    event_study = decile_event_study(panel, decile_col)
-    eras = coverage_eras(panel)
-    era_ic = ic_summary_by_era(panel, score_col, horizon, eras)
-    yearly_ic = ic_by_year(panel, score_col, horizon)
+    # --- selection universe: every headline statistic describes what IMA
+    # actually picks from (the S&P 600). The 400 stays scored for the overlay.
+    if "index_name" in panel.columns:
+        sel = panel[panel["index_name"] == config.SELECTION_INDEX].copy()
+        logger.info("Selection universe (%s): %d of %d panel rows",
+                    config.SELECTION_INDEX, len(sel), len(panel))
+    else:
+        sel = panel
+    # traded constructions step on the non overlapping quarter end subset
+    sel_q = quarter_end_subset(sel)
 
-    # --- backtest ---
+    # --- validate (on the selection universe, monthly grid) ---
+    logger.info("=== Validation ===")
+    ic_summaries = {h: summarize_ic(sel, score_col, h) for h in config.HORIZONS_Q}
+    decile_summaries = {h: decile_analysis(sel, decile_col, h) for h in config.HORIZONS_Q}
+    factor_ic = factor_ic_table(sel, horizon)
+    calibration = calibration_fm(sel, score_col, horizon)
+    event_study = decile_event_study(quarter_end_subset(sel), decile_col)
+    eras = coverage_eras(sel)
+    era_ic = ic_summary_by_era(sel, score_col, horizon, eras)
+    yearly_ic = ic_by_year(sel, score_col, horizon)
+
+    # --- backtest (quarter end subset of the selection universe) ---
     logger.info("=== Backtest ===")
-    bench_px = None
-    if not args.synthetic:
-        from data_loader import download_benchmark
-        try:
-            bench_px = download_benchmark(years=config.PRICE_HISTORY_YEARS, force_refresh=args.refresh)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Benchmark fetch failed: %s", exc)
-    bench_px = bench_px if bench_px is not None else pd.Series(dtype=float)
-    hold_all = backtest_hold_all(panel, decile_col, bench_px, cost_bps=args.cost_bps)
-    avoid = backtest_long_only_avoid_worst(panel, decile_col, bench_px, cost_bps=args.cost_bps)
+    hold_all = backtest_hold_all(sel_q, decile_col, bench_px, cost_bps=args.cost_bps)
+    avoid = backtest_long_only_avoid_worst(sel_q, decile_col, bench_px, cost_bps=args.cost_bps)
     # The screen's value added is avoid-worst MINUS hold-all (equal weight vs
     # equal weight); IJR is context, never the yardstick for the screen.
     avoid.metrics.update(relative_metrics(avoid, hold_all))
-    dates_all = sorted(panel["date"].unique())
-    bench = benchmark_result(bench_px, dates_all)
+    dates_q = sorted(sel_q["date"].unique())
+    bench = benchmark_result(bench_px, dates_q)
     sleeves = {"hold_all": hold_all, "avoid_worst": avoid}
     seg_year = segment_by_year({**sleeves, "benchmark": bench})
     seg_regime = segment_by_regime(sleeves, bench.returns)
 
-    # --- IMA Monte Carlo (replaces the long/short sleeve) ---
+    # --- IMA Monte Carlo (random 20 name portfolios FROM THE S&P 600) ---
     logger.info("=== IMA Monte Carlo simulation (20 name portfolios per screen tier) ===")
-    mc = simulate_ima_portfolios(panel, decile_col)
+    mc = simulate_ima_portfolios(sel_q, decile_col)
 
     # --- analyst overrides (annotations; never touch the score) ---
     from overrides import load_overrides, active_overrides, score_overrides
@@ -216,10 +259,14 @@ def run(args) -> None:
             meta_kwargs=dict(
                 universe_size=int(latest["ticker"].nunique()),
                 n_sectors=int(latest["gics_sector"].nunique()),
-                horizon_q=horizon, source=("synthetic" if args.synthetic else config.DEEP_HISTORY_SOURCE),
+                horizon_q=horizon, source=("synthetic" if args.synthetic else args.source),
                 learned_enabled=config.USE_LEARNED_WEIGHTS, default_score=score_col,
                 membership_is_pit=(False if args.synthetic else has_real_membership()),
                 diagnostics=diag, n_cross_sections=int(panel["date"].nunique()),
+                rebalance_freq=config.REBALANCE_FREQ,
+                selection_index=config.SELECTION_INDEX,
+                n_selection=int(sel[sel["date"] == latest_date]["ticker"].nunique()) if len(sel) else 0,
+                n_quarterly_cross_sections=int(sel_q["date"].nunique()),
                 cost_bps=args.cost_bps, panel_rows=int(len(panel)),
                 n_delisted=int(panel["delisted"].sum()) if "delisted" in panel else 0,
                 exclusions_summary={
@@ -316,7 +363,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--max-tickers", type=int, default=None, dest="max_tickers",
                    help="cap universe size for a fast run")
     p.add_argument("--source", type=str, default=config.DEEP_HISTORY_SOURCE,
-                   choices=["yfinance", "factset", "spglobal"], help="fundamentals source")
+                   choices=["edgar", "yfinance", "factset", "spglobal"],
+                   help="fundamentals source (edgar = free SEC XBRL, no key needed)")
     p.add_argument("--refresh", action="store_true", help="ignore caches and re download")
     p.add_argument("--no-webapp", action="store_true", dest="no_webapp",
                    help="skip webapp JSON export")

@@ -3,7 +3,8 @@ import { Term } from "./Term";
 
 const DIRECTION_NOTE: Record<string, string> = {
   Valuation: "rich means red flag (the value premium)",
-  Momentum: "low 12 minus 1 momentum is the red flag; the 1 month reversal is kept separately",
+  Momentum: "low 12 minus 1 momentum and distance below the 52 week high are red flags; the 1 month reversal is kept separately",
+  Volatility: "high idiosyncratic volatility, lottery like single day pops (MAX), and high beta are red flags (Ang et al; Bali et al; betting against beta)",
   Quality: "low or declining profitability is the red flag (the quality premium)",
   Investment: "high asset growth and net issuance are red flags (the asset growth and dilution effects)",
   "Earnings Quality": "low operating cash flow over net income means high accruals is the red flag (Sloan)",
@@ -79,19 +80,58 @@ export function MethodologyView({ meta }: Bundle) {
           cannot measure honestly from the data on hand, such as analyst estimate revisions, rather than fake it.
         </div>
 
+        <h3>Peer groups and the selection universe</h3>
+        <p>
+          Every comparison happens inside a <strong>(date, sector, index)</strong> peer group: an S&amp;P 600
+          name is z scored, labeled, and deciled against S&amp;P 600 sector peers only, and a 400 graduate
+          against 400 peers only. IMA picks from the 600 — the <Term id="selectionuniverse">selection
+          universe</Term> — so every validation statistic, backtest, and simulation runs on the 600 alone,
+          while the 400 stays scored purely so graduated holdings remain monitorable in the overlay. The
+          candidate lists default to 600 with a toggle.
+        </p>
+
+        <h3>Scoring grid</h3>
+        <p>
+          Cross sections are cut <strong>monthly back to 2010</strong> (~200 observation dates). Labels still
+          look {meta.horizon_q} quarter(s) ahead, so adjacent months are
+          <Term id="overlapping"> overlapping observations</Term> and the <Term id="neweywest">Newey West</Term>
+          lag count scales with the overlap — the standard Jegadeesh Titman construction, adopted for
+          statistical power. Traded constructions (backtest, Monte Carlo) and quarter over quarter comparisons
+          step on the quarter end subset: overlap is a statistics tool, not a tradeable rebalance. The monthly
+          grid also guarantees a fresh post earnings cross section every quarter — re-run the pipeline the day
+          after prints for IMA's post earnings updates.
+        </p>
+
         <h3>Construction (sequenced to avoid the equal weight versus fitted inconsistency)</h3>
         <ol>
-          <li>Compute every factor sector neutrally (z score within GICS sector at each date), sign aligned to
-            its red flag direction.</li>
-          <li><strong><Term id="equalweight">Equal weight</Term> baseline</strong>: the plain mean of the sector
-            neutral factors becomes the composite, then sector neutral <Term id="decile">deciles</Term>. This
-            baseline ships and is validated first.</li>
+          <li>Compute every factor peer neutrally (z score within GICS sector × index at each date), sign
+            aligned to its red flag direction.</li>
+          <li><strong><Term id="familybalanced">Family balanced</Term> baseline</strong>: factors are averaged
+            within their family first, then across families — four collinear valuation ratios cast ONE vote,
+            and the price derived families (Momentum, Volatility) cannot swamp the fundamental ones no matter
+            how many price factors exist. A name needs at least 3 populated factors across at least 2 families
+            to be scored at all, and the composite is re-standardized within each peer group so thin coverage
+            names cannot land in extreme deciles as a data artifact. Then peer neutral
+            <Term id="decile"> deciles</Term>. This baseline ships and is validated first.</li>
           <li>Optional <Term id="learnedweight">learned weight</Term> model (ridge, logistic, or gradient boosted
-            trees), trained <Term id="walkforward">walk forward</Term> against forward relative returns. It
-            becomes the default scorer only if it <strong>beats the baseline <Term id="oos">out of
-            sample</Term></strong>, otherwise the baseline stays default. Current default:
-            <code> {meta.default_score}</code>. Fitted then ignored weights are never presented.</li>
+            trees), trained <Term id="walkforward">walk forward</Term> on the selection universe against forward
+            relative returns. It becomes the default scorer only if it <strong>beats the baseline
+            <Term id="oos"> out of sample</Term></strong> on a paired t test, otherwise the baseline stays
+            default. Current default: <code>{meta.default_score}</code>. Fitted then ignored weights are never
+            presented.</li>
         </ol>
+
+        <h3>Fundamentals source: SEC EDGAR (free, point in time)</h3>
+        <p>
+          Fundamental factors are built from the SEC's XBRL <code>companyfacts</code> API: every figure a
+          company ever filed, quarterly back to ~2009–2012 for most names, each stamped with its actual
+          <strong> filing date</strong> — which becomes the panel's as of date (true
+          <Term id="pointintime"> point in time</Term> knowledge instead of a flat reporting lag guess). Values
+          are always the <em>first filed</em> number, never a later restatement. Filers that tag the same line
+          item under different concepts across the years are merged by an alias map, and year to date cash flow
+          figures are differenced into quarters (Q4 = FY − Q3 YTD). No API key is involved; the SEC only
+          requires an identifying User-Agent. yfinance remains a per name fallback.
+        </p>
 
         <h3>Torpedo screener (absolute risk)</h3>
         <p>
@@ -213,10 +253,11 @@ export function MethodologyView({ meta }: Bundle) {
 
         <h3>Methodology limitations (honest)</h3>
         <ul>
-          <li><strong>yfinance fundamental depth (about 4 to 5 quarters).</strong> Valuation, quality, accruals,
-            asset growth and issuance factors only populate the most recent cross sections; deep history is
-            carried by the price factors (momentum, reversal). The optional FactSet or S&amp;P Global loader is
-            the fix and is gated behind <code>.env</code> and config.</li>
+          <li><strong>EDGAR fundamentals reach back to ~2009–2012, not further.</strong> Pre XBRL cross sections
+            carry price factors only; some filers tag line items idiosyncratically (the alias map is maintained,
+            not perfect); and names without a CIK fall back to shallow yfinance statements. The coverage era
+            split reports exactly which cross sections carry full factor coverage — read it before quoting any
+            pooled number.</li>
           <li><strong>Estimate factors are off unless wired in.</strong> Analyst revisions and
             <Term id="sue"> SUE</Term> cannot be built from yfinance, so they are gated
             (<code>use_estimate_factors = {String(meta.use_estimate_factors)}</code>) and never synthesized from

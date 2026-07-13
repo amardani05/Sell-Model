@@ -66,7 +66,8 @@ export default function App() {
           <span className="tagline">Sector neutral ranking of expected <em>relative underperformance</em> · S&amp;P 600 + 400</span>
         </div>
         <span className="sub">
-          {m.universe_size} names · {m.n_sectors} sectors · {m.n_cross_sections} quarterly cross sections ·
+          {m.universe_size} names ({m.n_selection ?? "?"} in the {m.selection_index ?? "S&P 600"} selection universe) ·
+          {" "}{m.n_sectors} sectors · {m.n_cross_sections} {m.rebalance_freq === "M" ? "monthly" : "quarterly"} cross sections ·
           horizon {m.horizon_q}Q · source <code>{m.source}</code> ·
           default score <code>{m.default_score}</code> ·
           generated {new Date(m.generated_at).toLocaleString()}

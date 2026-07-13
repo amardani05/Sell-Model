@@ -40,7 +40,15 @@ load_dotenv()
 BENCHMARK_TICKER: str = "IJR"  # iShares S&P Small Cap 600 ETF (long only benchmark)
 SECTOR_KEY: str = "gics_sector"  # the column factors are neutralized within
 
-# Minimum names a sector must have on a given date to be ranked sector neutrally.
+# IMA selects from the S&P 600 ONLY; the S&P 400 is unioned in purely so
+# graduated holdings keep getting scored for the portfolio overlay. The two
+# never share a peer group: factors are neutralized, labels medianed, and
+# deciles cut within (date, sector, index), and every SELECTION statistic
+# (IC, calibration, event study, backtest, Monte Carlo) runs on the selection
+# index only. The 400 exists to be monitored, not to be picked from.
+SELECTION_INDEX: str = "S&P 600"
+
+# Minimum names a peer group (date x sector x index) must have to be ranked.
 # Below this, cross sectional ranks are meaningless; the names are dropped from
 # that cross section (and logged).
 MIN_NAMES_PER_SECTOR: int = 5
@@ -51,7 +59,18 @@ MIN_NAMES_PER_SECTOR: int = 5
 # Horizons (in quarters) at which forward RELATIVE returns are measured.
 HORIZONS_Q: tuple[int, ...] = (1, 2)
 DEFAULT_HORIZON_Q: int = 1
-REBALANCE_FREQ: str = "Q"          # quarterly rebalance for the backtest
+# Cross sections are cut MONTHLY (~200 observation dates back to 2010): the
+# labels still look one/two quarters ahead, so adjacent months overlap and the
+# Newey West lag count scales accordingly (see validate._nw_lags). The monthly
+# grid is the standard overlapping-portfolio construction (Jegadeesh Titman
+# 1993) and triples statistical power from the same price history. It also
+# guarantees a fresh post earnings cross section every quarter — re-run
+# ``python main.py`` the day after prints for IMA's post earnings updates.
+# TRADED sleeves (backtest, Monte Carlo) still step quarter to quarter on the
+# quarter end subset: overlapping holdings are a statistics tool, not a
+# tradeable rebalance.
+REBALANCE_FREQ: str = "M"          # "M" (monthly) | "Q" (quarterly) cross sections
+PERIODS_PER_QUARTER: dict[str, int] = {"M": 3, "Q": 1}
 TRADING_DAYS_PER_QUARTER: int = 63
 
 # =============================================================================
@@ -75,11 +94,26 @@ VALUATION_FACTORS: list[str] = [
 ]
 
 # --- Momentum ----------------------------------------------------------------
-#     Anomaly: Jegadeesh Titman 12 1 momentum (losers keep losing) + the
-#     short term (1 month) reversal effect, kept as a SEPARATE factor.
+#     Anomalies: Jegadeesh Titman 12 1 momentum (losers keep losing), the
+#     short term (1 month) reversal effect, and the 52 week high effect
+#     (George Hwang 2004: names far below their high keep lagging).
 MOMENTUM_FACTORS: list[str] = [
     "mom_12_1",        # 12m minus 1m total return (LOW = loser = red flag)
     "reversal_1m",     # last 1m return            (HIGH = reverses down = red flag)
+    "high_52w",        # price / trailing 52w high (LOW = far below high = red flag)
+]
+
+# --- Volatility / lottery (high = red flag) -----------------------------------
+#     Anomalies: idiosyncratic volatility (Ang Hodrick Xing Zhang 2006), the
+#     MAX lottery demand effect (Bali Cakici Whitelaw 2011), and betting
+#     against beta (Frazzini Pedersen 2014). A separate FAMILY on purpose: the
+#     family balanced composite caps all price derived families (momentum +
+#     volatility) at 2 of the family count, so adding these cannot let price
+#     signals swamp the fundamental ones.
+VOLATILITY_FACTORS: list[str] = [
+    "ivol_63d",        # residual daily vol vs benchmark, ~3m (HIGH = red flag)
+    "max_ret_1m",      # max single day return, last month    (HIGH = lottery = red flag)
+    "beta_252d",       # market beta vs benchmark, ~12m       (HIGH = red flag)
 ]
 
 # --- Quality / profitability (low / declining = red flag) --------------------
@@ -123,6 +157,7 @@ ESTIMATE_FACTORS: list[str] = [
 BASE_FACTORS: list[str] = (
     VALUATION_FACTORS
     + MOMENTUM_FACTORS
+    + VOLATILITY_FACTORS
     + QUALITY_FACTORS
     + INVESTMENT_FACTORS
     + EARNINGS_QUALITY_FACTORS
@@ -138,6 +173,11 @@ RED_FLAG_DIRECTION: dict[str, int] = {
     # momentum
     "mom_12_1": -1,        # low momentum (loser) is the red flag
     "reversal_1m": +1,     # high last month return reverses -> red flag
+    "high_52w": -1,        # far below the 52w high is the red flag
+    # volatility / lottery
+    "ivol_63d": +1,
+    "max_ret_1m": +1,
+    "beta_252d": +1,
     # quality
     "roe": -1,
     "roa": -1,
@@ -155,10 +195,14 @@ RED_FLAG_DIRECTION: dict[str, int] = {
     "sue": -1,
 }
 
-# Group membership for the Factor IC webapp tab.
+# Group membership: drives BOTH the Factor IC webapp tab AND the family
+# balanced composite (model.equal_weight_score averages within family first,
+# then across families, so four collinear valuation ratios carry one family
+# vote, not four).
 FACTOR_GROUPS: dict[str, str] = {
     **{f: "Valuation" for f in VALUATION_FACTORS},
     **{f: "Momentum" for f in MOMENTUM_FACTORS},
+    **{f: "Volatility" for f in VOLATILITY_FACTORS},
     **{f: "Quality" for f in QUALITY_FACTORS},
     **{f: "Investment" for f in INVESTMENT_FACTORS},
     **{f: "Earnings Quality" for f in EARNINGS_QUALITY_FACTORS},
@@ -178,6 +222,14 @@ def active_factors() -> list[str]:
 NEUTRALIZE_METHOD: str = "zscore"
 WINSORIZE_PCT: float = 0.02   # clip each factor at 2/98th pct before neutralizing
 N_DECILES: int = 10           # sector neutral decile buckets (10 = worst, 1 = best)
+
+# Family balanced composite: average factors WITHIN each family first, then
+# average the family scores ("equal weight by information", not by factor
+# count), re-standardize the composite within each peer group so a name scored
+# on 2 families and a name scored on 6 are comparable, and refuse to score a
+# name on too thin a base at all.
+MIN_FACTORS_FOR_SCORE: int = 3   # a name needs >= this many populated factors
+MIN_FAMILIES_FOR_SCORE: int = 2  # ...spread over >= this many families
 
 # =============================================================================
 # Model selection
@@ -205,7 +257,12 @@ RIDGE_ALPHA: float = 10.0
 # composite to a 0 to 100 universe percentile and a coarse tier.
 TORPEDO_FEATURES: list[str] = [
     "pe_ratio", "ev_to_ebitda", "ps_ratio", "fcf_yield",
-    "mom_12_1", "reversal_1m",
+    "mom_12_1", "reversal_1m", "high_52w",
+    "ivol_63d", "max_ret_1m", "beta_252d",
+    "amihud_63d",        # torpedo ONLY: illiquidity = exit / blow up risk. As a
+                         # RETURN predictor Amihud points the other way (the
+                         # illiquidity premium), so it is deliberately kept out
+                         # of the sell model's return ranking.
     "roe", "roa", "gross_margin", "fcf_margin", "roe_yoy", "gross_margin_yoy",
     "asset_growth_yoy", "net_issuance_yoy", "accruals_ocf_ni",
     "short_pct_float",   # torpedo specific: crowded shorts flag blow up risk
@@ -214,7 +271,8 @@ TORPEDO_FEATURES: list[str] = [
 # +1: a higher raw value means MORE absolute risk; -1: means LESS.
 TORPEDO_RISK_DIRECTION: dict[str, int] = {
     "pe_ratio": +1, "ev_to_ebitda": +1, "ps_ratio": +1, "fcf_yield": -1,
-    "mom_12_1": -1, "reversal_1m": +1,
+    "mom_12_1": -1, "reversal_1m": +1, "high_52w": -1,
+    "ivol_63d": +1, "max_ret_1m": +1, "beta_252d": +1, "amihud_63d": +1,
     "roe": -1, "roa": -1, "gross_margin": -1, "fcf_margin": -1,
     "roe_yoy": -1, "gross_margin_yoy": -1,
     "asset_growth_yoy": +1, "net_issuance_yoy": +1,
@@ -233,14 +291,22 @@ TORPEDO_TIER_COLORS: dict[str, str] = {
 }
 
 # =============================================================================
-# Optional estimate revision / deep history source (gated behind .env)
+# Fundamentals source / optional estimate factors
 # =============================================================================
-# OFF by default. yfinance CANNOT supply estimate revisions / SUE or deep
-# point in time fundamentals; turning this on requires a real connector.
+# Default fundamentals source is now SEC EDGAR XBRL companyfacts: free,
+# official, ~2009+ quarterly history, and every value is stamped with its
+# actual FILING date (true point in time knowledge). NO API KEY IS NEEDED —
+# the SEC only requires an identifying User-Agent, which reuses USER_AGENT
+# below. yfinance remains the per ticker fallback when a CIK is missing.
+# WRDS (CRSP / Compustat / IBES through the university) is a separate,
+# research only channel; when its connector is built, credentials will live in
+# .env as WRDS_USERNAME / WRDS_PASSWORD (see .env.example) — never in code.
 USE_ESTIMATE_FACTORS: bool = False
-DEEP_HISTORY_SOURCE: str = os.getenv("RSM_SOURCE", "yfinance")  # "yfinance"|"factset"|"spglobal"
+DEEP_HISTORY_SOURCE: str = os.getenv("RSM_SOURCE", "edgar")  # "edgar"|"yfinance"|"factset"|"spglobal"
 SPGLOBAL_API_KEY: str | None = os.getenv("SPGLOBAL_API_KEY") or None
 FACTSET_API_KEY: str | None = os.getenv("FACTSET_API_KEY") or None
+WRDS_USERNAME: str | None = os.getenv("WRDS_USERNAME") or None
+WRDS_PASSWORD: str | None = os.getenv("WRDS_PASSWORD") or None
 
 # =============================================================================
 # Backtest / costs
@@ -305,11 +371,22 @@ PROMOTION_MIN_T: float = 2.0
 # =============================================================================
 # Data fetch / cache knobs
 # =============================================================================
-PRICE_HISTORY_YEARS: int = 8   # deep price history -> many quarterly cross sections
+# Price history reaches back to 2010: with the monthly grid that is ~200
+# cross sections. The membership caveat gets LOUDER the further back this
+# goes (a current only snapshot in 2010 is heavily survivorship biased) —
+# the era split and the header warning carry that message.
+PRICE_HISTORY_START: str = "2010-01-01"
+PRICE_HISTORY_YEARS: int = 17  # legacy knob; kept as ceiling for benchmark fetch
 BATCH_SIZE: int = 40
 BATCH_DELAY_SECONDS: float = 2.0
 CACHE_MAX_AGE_SECONDS: int = 24 * 60 * 60
 MIN_TRADING_DAYS: int = 252     # a ticker needs >=1y of prices to be scored
+
+# SEC EDGAR (no key — identify yourself via USER_AGENT and respect ~10 req/s)
+EDGAR_TICKER_CIK_URL: str = "https://www.sec.gov/files/company_tickers.json"
+EDGAR_COMPANYFACTS_URL: str = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
+EDGAR_REQUESTS_PER_SEC: float = 8.0
+EDGAR_CACHE: Path | None = None  # set below after DATA_DIR exists
 
 # FINRA bi monthly short interest (equity short interest) — public flat files.
 FINRA_SHORT_INTEREST_URL: str = (
@@ -346,7 +423,10 @@ OVERRIDE_MAX_AGE_QUARTERS: int = 2   # default expiry horizon if none supplied
 
 # Caches
 PRICE_CACHE: Path = DATA_DIR / "price_cache.parquet"
+VOLUME_CACHE: Path = DATA_DIR / "volume_cache.parquet"
 BENCHMARK_CACHE: Path = DATA_DIR / "benchmark_cache.parquet"
 FUNDAMENTALS_CACHE: Path = DATA_DIR / "fundamentals_cache.parquet"
 SHORT_INTEREST_CACHE: Path = DATA_DIR / "short_interest_cache.parquet"
 PANEL_CACHE: Path = DATA_DIR / "panel_cache.parquet"
+EDGAR_CACHE = DATA_DIR / "edgar_fundamentals.parquet"
+EDGAR_CIK_CACHE: Path = DATA_DIR / "edgar_cik_map.json"

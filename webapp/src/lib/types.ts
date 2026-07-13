@@ -6,6 +6,10 @@ export interface Meta {
   universe_size: number;
   n_sectors: number;
   n_cross_sections: number;
+  rebalance_freq?: string;
+  selection_index?: string | null;
+  n_selection?: number | null;
+  n_quarterly_cross_sections?: number | null;
   panel_rows: number;
   n_delisted_carried: number;
   horizon_q: number;

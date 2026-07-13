@@ -44,13 +44,16 @@ logger = logging.getLogger(__name__)
 
 
 def _nw_lags(horizon_q: int) -> int:
-    """Newey West lag choice: the label overlap (h − 1 quarters), floored at 1.
+    """Newey West lag choice: the label overlap in SAMPLING periods, floored at 1.
 
-    Quarterly sampled labels over an h quarter horizon overlap h − 1 adjacent
-    periods, which is exactly the autocorrelation HAC must absorb. One lag is
-    kept as a floor as a mild guard against other persistence.
+    With monthly cross sections and an h quarter label, adjacent observations
+    share 3·h − 1 months of the same forward window; with quarterly sampling
+    the overlap is h − 1. That overlap is exactly the autocorrelation HAC must
+    absorb — this is what makes the overlapping monthly grid statistically
+    legitimate rather than triple counting.
     """
-    return max(1, int(horizon_q) - 1)
+    per_q = config.PERIODS_PER_QUARTER.get(config.REBALANCE_FREQ, 1)
+    return max(1, per_q * int(horizon_q) - 1)
 
 
 def _hac_tstat(series: pd.Series, lags: int = 1) -> tuple[float, float, float]:

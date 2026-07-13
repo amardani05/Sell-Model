@@ -5,7 +5,7 @@ import { Term } from "./Term";
 import { FactorICRow } from "../lib/types";
 
 const GROUP_COLOR: Record<string, string> = {
-  Valuation: "#4e79a7", Momentum: "#f28e2b", Quality: "#59a14f",
+  Valuation: "#4e79a7", Momentum: "#f28e2b", Volatility: "#17becf", Quality: "#59a14f",
   Investment: "#b07aa1", "Earnings Quality": "#e15759", Estimates: "#9c755f", Other: "#999",
 };
 

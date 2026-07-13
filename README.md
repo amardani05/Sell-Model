@@ -68,9 +68,10 @@ CLI flags: `--synthetic`, `--since YYYY-MM-DD`, `--horizon-q {1,2}`, `--cost-bps
 
 | Module | Role |
 |---|---|
-| `config.py` | factor taxonomy, sector neutral **red flag direction** map, horizons, cost bps, **data integrity gate thresholds**, coverage era threshold, Monte Carlo knobs, model + estimate source flags, paths |
+| `config.py` | factor taxonomy (incl. **Volatility family**), red flag direction map, **selection universe** (S&P 600), monthly grid + horizons, cost bps, **data integrity gate thresholds**, coverage era threshold, Monte Carlo knobs, source flags, paths |
 | `universe.py` | **point in time** S&P 600 + 400 membership store loader + Wikipedia current fallback (warns loudly) |
-| `data_loader.py` | deep price history (delisting aware), shallow yfinance fundamentals, short interest |
+| `data_loader.py` | deep price + **volume** history from 2010 (delisting aware), shallow yfinance fundamentals (fallback), short interest |
+| `edgar_loader.py` | **SEC EDGAR XBRL companyfacts**: free quarterly fundamentals back to ~2009 with true **filing date as of stamps**, tag alias merging, YTD de-accumulation, first filed values (never restatements). No API key — User-Agent only |
 | `feature_engine.py` | sector relative factor computation (`get_field` alias pattern), the panel, **delisting aware, splice gated forward relative returns** (`detect_price_anomalies` + exclusion log), sector neutralization |
 | `model.py` | equal weight baseline + optional **walk forward** learned weight model; sector neutral deciles |
 | `validate.py` | Fama MacBeth IC + Newey West t stat (lags scale with label overlap), **per date calibration with SE bands / medians / winsorized means**, **P(underperform) reliability curve**, **decile 10 event study**, **coverage era split**, IC by year, decile spread + monotonicity, per factor IC, baseline vs learned + **paired promotion test** |
@@ -96,28 +97,42 @@ mean (no internal sign inconsistency).
 | Family | Factors | Red flag | Anomaly |
 |---|---|---|---|
 | Valuation | `pe_ratio`, `ev_to_ebitda`, `ps_ratio`, `fcf_yield` | rich (low FCF yield) | value premium / HML |
-| Momentum | `mom_12_1`, `reversal_1m` | low 12 1 momentum; high last month return | Jegadeesh Titman + short term reversal |
+| Momentum | `mom_12_1`, `reversal_1m`, `high_52w` | low 12 1 momentum; high last month return; far below the 52w high | Jegadeesh Titman + short term reversal + George Hwang |
+| Volatility | `ivol_63d`, `max_ret_1m`, `beta_252d` | high idio vol / lottery pops / high beta | IVOL puzzle (Ang et al) + MAX (Bali et al) + BAB (Frazzini Pedersen) |
 | Quality | `roe`, `roa`, `gross_margin`, `fcf_margin`, `roe_yoy`, `gross_margin_yoy` | low / declining | profitability premium / RMW |
 | Investment | `asset_growth_yoy`, `net_issuance_yoy` | high | asset growth (CGS) + dilution (Daniel Titman) |
 | Earnings quality | `accruals_ocf_ni` | low OCF/NI (high accruals) | Sloan accruals |
 | Estimates *(gated)* | `est_revision_3m`, `sue` | downward revisions / low SUE | post revision / SUE drift |
 
 The estimate factors are **off by default** and only populated by `deep_loader.py`
-(FactSet / S&P Global). yfinance cannot supply them, so they are never faked from it.
+(FactSet / S&P Global). Amihud illiquidity is computed but feeds the **torpedo
+screener only**: as a *return* predictor it points the other way (the illiquidity
+premium), so it is deliberately kept out of the sell ranking.
 
 ---
 
 ## Construction (sequenced to avoid the equal weight vs fitted inconsistency)
 
-1. Compute each factor **sector neutrally** (winsorize, then z score within GICS sector at
-   each date), sign aligned to its red flag direction.
-2. **Baseline = equal weight composite** of the sector neutral factors → sector neutral
-   deciles. This Piper style baseline ships and is validated **first**.
-3. **Optional learned weight model** (ridge / logistic / GBM), trained **walk forward**
-   against forward relative returns. It becomes the default scorer **only if it beats the
-   baseline out of sample on a paired per date IC t test** (`validate.paired_ic_test`,
-   t ≥ `config.PROMOTION_MIN_T`); a point estimate edge is noise, not a win. Otherwise the
-   baseline stays default. We never present fitted then ignored weights.
+0. **Peer groups are (date, sector, index)** and cross sections are **monthly back to
+   2010** (~200 overlapping observation dates; Newey West lags scale with the overlap).
+   S&P 600 names are ranked against 600 sector peers only; S&P 400 graduates against 400
+   peers only — the 400 exists to be *monitored*, never picked from. Every headline
+   statistic runs on the **S&P 600 selection universe** (`config.SELECTION_INDEX`).
+1. Compute each factor **peer neutrally** (winsorize, then z score within sector × index
+   at each date), sign aligned to its red flag direction.
+2. **Baseline = family balanced composite**: factors are averaged within family first,
+   then across families ("equal weight by information") — four collinear valuation ratios
+   cast one vote, and the price derived families (Momentum, Volatility) can never swamp
+   the fundamentals. Names need ≥ `MIN_FACTORS_FOR_SCORE` factors over
+   ≥ `MIN_FAMILIES_FOR_SCORE` families, and the composite is re-standardized within each
+   peer group (thin coverage names must not land in extreme deciles as an artifact).
+   → peer neutral deciles. This baseline ships and is validated **first**.
+3. **Optional learned weight model** (ridge / logistic / GBM), trained **walk forward on
+   the selection universe** against forward relative returns. It becomes the default
+   scorer **only if it beats the baseline out of sample on a paired per date IC t test**
+   (`validate.paired_ic_test`, t ≥ `config.PROMOTION_MIN_T`); a point estimate edge is
+   noise, not a win. Otherwise the baseline stays default. We never present fitted then
+   ignored weights.
 
 ### Baseline vs learned — out of sample comparison
 
@@ -257,11 +272,12 @@ are assumed to have held for all past dates). Replace the file with a true PIT e
 
 In the spirit of IMA PCA's limitations section — the things to say out loud:
 
-- **yfinance caps fundamental depth at ~4–5 quarters.** Valuation, quality, accruals,
-  asset growth and issuance factors only populate the most recent cross sections; YoY trend
-  factors need ~5 quarters and are frequently `NaN` and dropped (never imputed/faked). The
-  **deep history that drives the multi year backtest is the price factors** (momentum,
-  reversal). The fix is `deep_loader.py` (FactSet / S&P Global), gated behind `.env`.
+- **Fundamental depth now comes from SEC EDGAR** (quarterly back to ~2009–2012 for most
+  names, true filing date as of stamps). Residual gaps: pre XBRL history (~pre 2009) has
+  no fundamentals, some filers tag idiosyncratically (alias map maintenance), and
+  yfinance remains the fallback for names without a CIK. The coverage era split reports
+  exactly which cross sections carry full factor coverage — read it before quoting any
+  pooled number.
 - **Estimate revision / SUE factors are off by default.** They cannot be reliably built from
   yfinance, so they are gated behind `config.USE_ESTIMATE_FACTORS` + a real connector. They
   are **never** synthesized from price data.

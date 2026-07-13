@@ -1,15 +1,19 @@
+import { useState } from "react";
 import { Bundle, fmt, fmtSigned, decileColor } from "../lib/data";
 import { Plot } from "./Plot";
 import { DataTable } from "./DataTable";
 import { Term } from "./Term";
-import { Ticker } from "./TickerFlag";
+import { Ticker, UniverseToggle, inUniverse } from "./TickerFlag";
 import { TorpedoName } from "../lib/types";
 
 export function TorpedoView({ meta, scores, torpedo }: Bundle) {
   const tierColors = meta.torpedo_tier_colors;
+  const [universe, setUniverse] = useState<string>(meta.selection_index ?? "S&P 600");
 
   // contrast scatter: sell score (x) vs torpedo percentile (y), colored by sector
-  const pts = scores.filter((r) => r.score != null && r.torpedo_pct != null);
+  const pts = scores.filter((r) => r.score != null && r.torpedo_pct != null
+                                   && inUniverse(r.index_name, universe));
+  const namesRows = torpedo.names.filter((r) => inUniverse(r.index_name, universe));
   const sectors = Array.from(new Set(pts.map((p) => p.gics_sector))).sort();
   const scoreVals = pts.map((p) => p.score as number).sort((a, b) => a - b);
   const xMid = scoreVals.length ? scoreVals[Math.floor(scoreVals.length / 2)] : 0;
@@ -28,7 +32,10 @@ export function TorpedoView({ meta, scores, torpedo }: Bundle) {
   return (
     <div className="grid">
       <section className="card span-12">
-        <h2>Torpedo screener — the absolute risk view</h2>
+        <div className="row-between">
+          <h2>Torpedo screener — the absolute risk view</h2>
+          <UniverseToggle value={universe} onChange={setUniverse} counts={meta.index_counts} />
+        </div>
         <p>
           The <Term id="torpedo" /> answers the opposite question to the sell model. Instead of ranking a name
           against its sector peers, it ranks every name against the <strong>whole universe</strong> and targets
@@ -90,7 +97,7 @@ export function TorpedoView({ meta, scores, torpedo }: Bundle) {
           sector neutral view on the same name, so you can see where the two disagree.
         </p>
         <DataTable<TorpedoName>
-          rows={torpedo.names.slice(0, 30)}
+          rows={namesRows.slice(0, 30)}
           rowKey={(r) => r.ticker}
           columns={[
             { key: "ticker", label: "Ticker", render: (r) => <Ticker symbol={r.ticker} index={r.index_name} /> },

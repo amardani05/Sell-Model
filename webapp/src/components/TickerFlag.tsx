@@ -18,6 +18,33 @@ export function TickerFlag({ index }: { index?: string | null }) {
   );
 }
 
+// Universe filter for the selection phase views. IMA picks from the S&P 600,
+// so 600-only is the DEFAULT everywhere a candidate list is shown; the 400 is
+// scored for monitoring and can be toggled in.
+export function UniverseToggle({ value, onChange, counts }: {
+  value: string;
+  onChange: (v: string) => void;
+  counts?: Record<string, number>;
+}) {
+  const opts: { key: string; label: string }[] = [
+    { key: "S&P 600", label: `600${counts?.["S&P 600"] ? ` (${counts["S&P 600"]})` : ""}` },
+    { key: "S&P 400", label: `400${counts?.["S&P 400"] ? ` (${counts["S&P 400"]})` : ""}` },
+    { key: "all", label: "All" },
+  ];
+  return (
+    <div className="seg" role="group" aria-label="universe filter">
+      {opts.map((o) => (
+        <button key={o.key} className={value === o.key ? "active" : ""}
+          onClick={() => onChange(o.key)}>{o.label}</button>
+      ))}
+    </div>
+  );
+}
+
+export function inUniverse(indexName: string | null | undefined, filter: string): boolean {
+  return filter === "all" || (indexName ?? "") === filter;
+}
+
 // Ticker cell = symbol plus its index flag, used in every table with a ticker.
 // Clicking opens the per name drill down (factor waterfall + formulas);
 // hovering shows the top red flags inline.

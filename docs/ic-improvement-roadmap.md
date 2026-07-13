@@ -1,9 +1,22 @@
 # IC Improvement Roadmap — free data first, every paid dollar justified
 
-**Status: proposals for approval.** Nothing here is implemented. Each item says what
-it is, why it should raise the IC, what it costs (time/money), and what to read to
-understand it before green-lighting. Ordered so the free statistical power comes
-first and money is the *last* resort, per the project's constraint.
+**Status: sections 1 and 2 approved and largely BUILT (2026-07-13).** Implemented:
+1.1 (monthly grid back to 2010, ~200 overlapping cross sections, NW lags scale with
+overlap), 1.2 (family-balanced composite + coverage floors + re-standardization),
+1.3 (satisfied by the monthly grid — re-run the pipeline the day after prints for a
+fresh post-earnings cross section), 1.4 (peer groups are (date, sector, index); all
+headline stats on the S&P 600 selection universe), 2.1 (EDGAR XBRL loader —
+`edgar_loader.py`, default source), 2.2 (52w-high, IVOL, MAX, beta into the model
+under a capped Volatility family; Amihud into the torpedo only — as a *return*
+predictor it points the wrong way for a sell model). Per Amar: 2.6 delisting-reason
+curation deprioritized, 2.7 (13F) skipped. Remaining from section 2: FINRA short
+interest history (2.3), insider Form 4 (2.4), price-based SUE (2.5), ETF-archive PIT
+membership (2.6-lite). Tier 2 and the vendor ladder remain as written; 1.5/1.6
+(horizon term structure, IC-weighted blending) are the next Tier 0 items.
+
+Each item below says what it is, why it should raise the IC, what it costs
+(time/money), and what to read to understand it before green-lighting. Ordered so
+the free statistical power comes first and money is the *last* resort.
 
 ---
 
