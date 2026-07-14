@@ -387,3 +387,106 @@ def fetch_edgar_fundamentals(tickers: list[str],
                          ignore_index=True)
         flat.to_parquet(cache)
     return out
+
+
+# =============================================================================
+# Earnings event dates (roadmap 2.5 — 8-K item 2.02)
+# =============================================================================
+def _events_from_filing_arrays(arr: dict) -> list[tuple[str, str]]:
+    """[(filingDate, acceptanceDateTime)] for earnings 8-Ks in one filings block."""
+    forms = arr.get("form") or []
+    items = arr.get("items") or []
+    fdates = arr.get("filingDate") or []
+    accept = arr.get("acceptanceDateTime") or []
+    out = []
+    for i in range(len(forms)):
+        if forms[i] == "8-K" and "2.02" in (items[i] or ""):
+            out.append((fdates[i], accept[i] if i < len(accept) else ""))
+    return out
+
+
+def _reaction_day(filing_date: str, acceptance: str) -> pd.Timestamp:
+    """First session whose CLOSE can reflect the news.
+
+    acceptanceDateTime is UTC (verified live 2026-07-14: after close filers
+    cluster at 20-21Z = 16-17 Eastern). Accepted before 16:00 Eastern -> the
+    filing day's close already reacts; at or after 16:00 -> the next day is
+    the reaction day. Missing acceptance falls back to the filing day (the
+    surrounding [r0-1, r0+1] window still spans the true reaction).
+    """
+    try:
+        et = pd.Timestamp(acceptance).tz_convert("America/New_York")
+        r0 = et.normalize().tz_localize(None)
+        if et.hour >= 16:
+            r0 = r0 + pd.offsets.BDay(1)
+        return r0
+    except (ValueError, TypeError):
+        return pd.Timestamp(filing_date)
+
+
+def fetch_earnings_events(tickers: list[str], force_refresh: bool = False) -> pd.DataFrame:
+    """Earnings event reaction days per ticker: [ticker, reaction_date].
+
+    Events are 8-K filings carrying item 2.02 (Results of Operations), the
+    disclosure vehicle for the earnings press release, pulled from the EDGAR
+    submissions index. The recent page covers ~1000 filings; older archive
+    pages are fetched only the first time a ticker enters the cache (they are
+    immutable), so a warm refresh is one request per name. Events within four
+    weeks of a prior one are dropped (amended or duplicate 2.02 filings in
+    the same cycle).
+    """
+    cache = config.EARNINGS_EVENTS_CACHE
+    old = pd.DataFrame(columns=["ticker", "reaction_date"])
+    if cache.exists():
+        try:
+            old = pd.read_parquet(cache)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("earnings events cache unreadable (%s); refetching", exc)
+    if (not force_refresh and cache.exists()
+            and (time.time() - cache.stat().st_mtime) < config.CACHE_MAX_AGE_SECONDS
+            and set(tickers) <= set(old["ticker"].unique())):
+        return old[old["ticker"].isin(set(tickers))].copy()
+
+    ciks = ticker_cik_map(force_refresh=force_refresh)
+    known = set(old["ticker"].unique())
+    t0 = time.time()
+    rows: list[dict] = []
+    n_arch = 0
+    for n, tk in enumerate(tickers, 1):
+        cik = ciks.get(tk.upper().replace(".", "-"))
+        if cik is None:
+            continue
+        d = _get(config.EDGAR_SUBMISSIONS_URL.format(name=f"CIK{cik:010d}.json"))
+        if not d:
+            continue
+        filings = d.get("filings") or {}
+        pairs = _events_from_filing_arrays(filings.get("recent") or {})
+        # archive pages: immutable deep history, only on first acquaintance
+        if tk not in known:
+            for f in filings.get("files") or []:
+                arch = _get(config.EDGAR_SUBMISSIONS_URL.format(name=f["name"]))
+                if arch:
+                    n_arch += 1
+                    pairs.extend(_events_from_filing_arrays(arch))
+        for fdate, accept in pairs:
+            rows.append({"ticker": tk, "reaction_date": _reaction_day(fdate, accept)})
+        if n % 200 == 0:
+            logger.info("EDGAR earnings events: %d/%d tickers", n, len(tickers))
+
+    new = pd.DataFrame(rows, columns=["ticker", "reaction_date"])
+    parts = [f for f in (old, new) if len(f)]
+    merged = (pd.concat(parts, ignore_index=True) if parts
+              else pd.DataFrame(columns=["ticker", "reaction_date"]))
+    merged["reaction_date"] = pd.to_datetime(merged["reaction_date"])
+    merged = (merged.dropna()
+                    .drop_duplicates(subset=["ticker", "reaction_date"])
+                    .sort_values(["ticker", "reaction_date"]).reset_index(drop=True))
+    # collapse near duplicates (amendments / split 2.02 filings): keep the first
+    merged["gap"] = merged.groupby("ticker")["reaction_date"].diff()
+    merged = merged[(merged["gap"].isna()) | (merged["gap"] > pd.Timedelta(days=28))]
+    merged = merged.drop(columns=["gap"]).reset_index(drop=True)
+    merged.to_parquet(cache, index=False)
+    logger.info("EDGAR earnings events: %d events for %d tickers (%d archive pages) "
+                "in %.0fs", len(merged), merged["ticker"].nunique(), n_arch,
+                time.time() - t0)
+    return merged[merged["ticker"].isin(set(tickers))].copy()

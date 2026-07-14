@@ -138,6 +138,18 @@ export const FACTOR_META: Record<string, FactorMeta> = {
     redFlag: "RISING shorting activity versus the prior quarter",
     anomaly: "Daily shorting activity predicts weak returns (Diether, Lee and Werner 2009)",
   },
+  insider_npr_6m: {
+    label: "Insider net purchase ratio (6m)", family: "Insider Activity",
+    formula: "(insider open market buy shares − sell shares) ÷ (buys + sells), trailing 126 sessions, from the SEC Form 4 data sets (plan flagged trades excluded; stamped by filing date)",
+    redFlag: "NET SELLING by insiders: purchases are the informative side, so a low or negative ratio flags risk",
+    anomaly: "Insider trading predicts returns, strongest in small caps (Lakonishok and Lee 2001)",
+  },
+  earn_react_1q: {
+    label: "Earnings reaction (latest print)", family: "Earnings Surprise",
+    formula: "benchmark adjusted return from the close before to the close after the latest earnings 8-K reaction day (item 2.02 from EDGAR; the value expires 70 sessions after the print)",
+    redFlag: "WEAK or negative market reaction to the latest print: bad surprises drift further down",
+    anomaly: "Post earnings announcement drift (Bernard and Thomas 1989); the free SUE proxy",
+  },
   est_revision_3m: {
     label: "Estimate revision (3m)", family: "Estimates",
     formula: "3 month change in consensus forward EPS (gated source)",
@@ -156,7 +168,8 @@ export const FACTOR_META: Record<string, FactorMeta> = {
 export const FAMILY_COLOR: Record<string, string> = {
   Valuation: "#4e79a7", Momentum: "#f28e2b", Volatility: "#17becf",
   Quality: "#59a14f", Investment: "#b07aa1", "Earnings Quality": "#e15759",
-  "Short Activity": "#8c564b", Estimates: "#9c755f",
+  "Short Activity": "#8c564b", "Insider Activity": "#e377c2",
+  "Earnings Surprise": "#bcbd22", Estimates: "#9c755f",
 };
 
 export function factorLabel(f: string): string {

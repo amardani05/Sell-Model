@@ -9,6 +9,8 @@ const DIRECTION_NOTE: Record<string, string> = {
   Investment: "high asset growth and net issuance are red flags (the asset growth and dilution effects)",
   "Earnings Quality": "low operating cash flow over net income means high accruals is the red flag (Sloan)",
   "Short Activity": "a high or rising share of daily volume sold short is the red flag (informed shorting flow, Boehmer Jones Zhang 2008; FINRA Reg SHO daily files, so history begins Oct 2018 and this is flow, not short interest positions)",
+  "Insider Activity": "net insider selling is the red flag: open market Form 4 purchases predict returns, strongest in small caps (Lakonishok and Lee 2001). The SEC posts each quarter's transaction data set a week or two after quarter end, so the newest cross sections can briefly lag",
+  "Earnings Surprise": "a weak market reaction to the latest earnings 8-K is the red flag: bad surprises keep drifting (Bernard and Thomas 1989). This is the price based SUE proxy while estimate feeds stay gated off",
   Estimates: "downward estimate revisions or low SUE are red flags (gated, never from yfinance)",
 };
 

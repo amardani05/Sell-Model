@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-14T18:05:11.207206Z",
+  "generated_at": "2026-07-14T21:28:37.334858Z",
   "model": "Relative Sell Model (sector neutral relative underperformance ranking)",
   "universe_size": 993,
   "n_sectors": 11,
@@ -19,7 +19,7 @@
   "source": "edgar",
   "cost_bps": 10.0,
   "neutralize_method": "zscore",
-  "n_factors": 21,
+  "n_factors": 23,
   "factor_groups": {
     "pe_ratio": "Valuation",
     "ev_to_ebitda": "Valuation",
@@ -42,11 +42,13 @@
     "accruals_ocf_ni": "Earnings Quality",
     "short_vol_ratio": "Short Activity",
     "short_vol_chg": "Short Activity",
+    "insider_npr_6m": "Insider Activity",
+    "earn_react_1q": "Earnings Surprise",
     "est_revision_3m": "Estimates",
     "sue": "Estimates"
   },
   "learned_weights_enabled": true,
-  "default_score": "score_ml",
+  "default_score": "score_ew",
   "membership_point_in_time": false,
   "index_counts": {
     "S&P 600": 581,
@@ -55,16 +57,16 @@
   "use_estimate_factors": false,
   "diagnostics": {
     "placebo": {
-      "real_ic": 0.0291283028719279,
-      "real_t": 3.187450540413604,
-      "placebo_ic_mean": 0.0005703999137086234,
-      "placebo_ic_std": 0.001706464442722583,
+      "real_ic": 0.008003499766559438,
+      "real_t": 0.9097213598406061,
+      "placebo_ic_mean": 0.0012898547106730506,
+      "placebo_ic_std": 0.0032425756615248737,
       "tolerance": 0.03,
       "passed": true
     },
     "lookahead": {
       "no_label_in_features": {
-        "n_features": 21,
+        "n_features": 23,
         "leak_columns": [],
         "passed": true
       },

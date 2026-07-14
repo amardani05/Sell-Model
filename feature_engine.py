@@ -268,6 +268,109 @@ def _short_activity_panels(short_volume: pd.DataFrame | None,
     return {"short_vol_ratio": level, "short_vol_chg": level - level.shift(d63)}
 
 
+def _insider_panels(insider: pd.DataFrame | None,
+                    index: pd.DatetimeIndex) -> dict[str, pd.DataFrame]:
+    """Daily wide panel for the insider activity factor (data <= each date).
+
+    Input is the per (ticker, filing date) open market flow from
+    insider_loader (10b5-1 plan flagged rows already excluded). Filing dates
+    snap forward to the next session in the price index; ``insider_npr_6m``
+    is the net purchase ratio (buys − sells) / (buys + sells) over a trailing
+    126 session window (Lakonishok Lee 2001). A name with no open market
+    trades in the window carries NaN — silence is absence of signal, not a
+    neutral reading. Trailing windows only, so values at t are invariant to
+    truncating history at t. The panel ends at the last filing date the SEC
+    has published (quarterly data sets); the caller carries that last value
+    forward to later rebalance dates.
+    """
+    if insider is None or insider.empty:
+        return {}
+    ins = insider.copy()
+    dts = pd.to_datetime(ins["date"])
+    pos = index.searchsorted(dts.values)
+    keep = pos < len(index)
+    ins, pos = ins[keep], pos[keep]
+    ins["date"] = index[pos]
+    start = pd.Timestamp(config.INSIDER_HISTORY_START)
+    idx = index[(index >= start) & (index <= ins["date"].max())]
+    buys = (ins.pivot_table(index="date", columns="ticker", values="buy_shares",
+                            aggfunc="sum").reindex(idx).fillna(0.0))
+    sells = (ins.pivot_table(index="date", columns="ticker", values="sell_shares",
+                             aggfunc="sum").reindex(idx).fillna(0.0))
+    d126 = 126
+    b = buys.rolling(d126, min_periods=63).sum()
+    s = sells.rolling(d126, min_periods=63).sum()
+    gross = b + s
+    npr = (b - s) / gross.where(gross > 0)
+    return {"insider_npr_6m": npr}
+
+
+def _earnings_reaction_panel(events: pd.DataFrame | None, prices: pd.DataFrame,
+                             benchmark_px: pd.Series | None) -> pd.DataFrame | None:
+    """Daily wide panel of the latest earnings reaction (data <= each date).
+
+    For each earnings event day r0 (first session whose close reflects the
+    8-K item 2.02 news, from edgar_loader), the abnormal move is
+    close(r0+1)/close(r0−1) − 1 minus the benchmark over the same window —
+    the market's own verdict on the print, the free proxy for SUE (Bernard
+    Thomas 1989 drift). The value becomes knowable at the close of r0+1 and
+    persists for 70 sessions (one quarter plus filing slack), then expires to
+    NaN so a name between prints is not scored on a stale reaction.
+    """
+    if events is None or events.empty:
+        return None
+    if benchmark_px is None or not len(benchmark_px):
+        logger.warning("earnings reaction: no benchmark series — factor skipped")
+        return None
+    index = prices.index
+    bm = benchmark_px.reindex(index).ffill()
+    cols: dict[str, pd.Series] = {}
+    for tk, g in events.groupby("ticker"):
+        if tk not in prices.columns:
+            continue
+        px = prices[tk]
+        vals, dates = [], []
+        for r0 in pd.to_datetime(g["reaction_date"]):
+            i = index.searchsorted(r0)
+            if i <= 0 or i + 1 >= len(index):
+                continue
+            pre, post = index[i - 1], index[i + 1]
+            p_pre, p_post = px.get(pre), px.get(post)
+            b_pre, b_post = bm.get(pre), bm.get(post)
+            if (pd.isna(p_pre) or pd.isna(p_post) or pd.isna(b_pre) or pd.isna(b_post)
+                    or p_pre <= 0 or b_pre <= 0):
+                continue
+            vals.append((p_post / p_pre - 1.0) - (b_post / b_pre - 1.0))
+            dates.append(post)
+        if not vals:
+            continue
+        s = pd.Series(vals, index=pd.DatetimeIndex(dates)).sort_index()
+        s = s[~s.index.duplicated(keep="last")]
+        cols[tk] = s.reindex(index).ffill(limit=70)
+    if not cols:
+        return None
+    return pd.DataFrame(cols)
+
+
+def _sample_exact_then_carry(daily: pd.DataFrame,
+                             q_dates: list[pd.Timestamp]) -> pd.DataFrame:
+    """Sample at rebalance dates WITHOUT resurrecting deliberate NaNs.
+
+    ``_asof_sample``'s unconditional ffill would fill values a factor panel
+    deliberately expired (the earnings reaction) or never had (insider
+    silence). Rebalance dates are trading days from the same price index, so
+    rows exist exactly; only dates BEYOND the panel's last date (data source
+    published up to a point) carry the final row forward.
+    """
+    out = daily.reindex(q_dates)
+    if len(daily):
+        last_dt = daily.index[-1]
+        after = [d for d in q_dates if d > last_dt]
+        if after:
+            out.loc[after, :] = daily.iloc[-1].values
+    return out
+
+
 def _rebalance_dates(prices: pd.DataFrame, freq: str = None) -> list[pd.Timestamp]:
     """Trading day period ends present in the price index ("M" or "Q")."""
     freq = freq or config.REBALANCE_FREQ
@@ -434,6 +537,8 @@ def build_panel(
     benchmark_px: pd.Series | None = None,
     fund_ts_override: dict[str, pd.DataFrame] | None = None,
     short_volume: pd.DataFrame | None = None,
+    insider: pd.DataFrame | None = None,
+    earnings_events: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Assemble the long panel of factors + forward relative returns.
 
@@ -468,6 +573,15 @@ def build_panel(
     sa = _short_activity_panels(short_volume, prices.index)
     for name, daily in sa.items():
         pf_q[name] = _asof_sample(daily, q_dates)
+
+    # --- insider activity (Form 4 open market flow, SEC quarterly data sets) ---
+    for name, daily in _insider_panels(insider, prices.index).items():
+        pf_q[name] = _sample_exact_then_carry(daily, q_dates)
+
+    # --- earnings reaction (8-K item 2.02 events; the price based SUE proxy) ---
+    er = _earnings_reaction_panel(earnings_events, prices, benchmark_px)
+    if er is not None:
+        pf_q["earn_react_1q"] = _sample_exact_then_carry(er, q_dates)
 
     # --- forward returns per horizon (delisting aware, splice gated) ---
     anomalies = detect_price_anomalies(prices)

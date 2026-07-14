@@ -9,10 +9,60 @@ headline stats on the S&P 600 selection universe), 2.1 (EDGAR XBRL loader —
 `edgar_loader.py`, default source), 2.2 (52w-high, IVOL, MAX, beta into the model
 under a capped Volatility family; Amihud into the torpedo only — as a *return*
 predictor it points the wrong way for a sell model). Per Amar: 2.6 delisting-reason
-curation deprioritized, 2.7 (13F) skipped. Remaining from section 2: FINRA short
-interest history (2.3), insider Form 4 (2.4), price-based SUE (2.5), ETF-archive PIT
-membership (2.6-lite). Tier 2 and the vendor ladder remain as written; Tier 0
-is now COMPLETE (1.1 through 1.6 all built).
+curation deprioritized, 2.7 (13F) skipped. Tier 0 is COMPLETE (1.1 through 1.6)
+and section 2 is now COMPLETE too (2.3/2.4/2.5 built 2026-07-14, notes below)
+except 2.6-lite, closed as infeasible on the free path (verdict below). Tier 2
+and the vendor ladder remain as written.
+
+**2.3 BUILT (2026-07-14, premise corrected):** FINRA's free bi-monthly short
+interest POSITION files turned out to cover OTC equities only with one rolling
+year online (verified against api.finra.org) — useless for an S&P 600 history.
+The free listed-name dataset is the Reg SHO daily short sale VOLUME file
+(~2018-10 onward), so the model carries short ACTIVITY (flow):
+`short_vol_ratio` (trailing 63d mean short share of volume) IC +0.028 (t 2.9,
+90 monthly periods) and `short_vol_chg` (flat, t 0.1, kept because specified
+ex ante). Torpedo swapped its today-only short_pct_float snapshot for the
+FINRA ratio, killing a quiet look-ahead. Position history (level, days to
+cover) still arrives via WRDS/Compustat when access lands.
+
+**2.4 BUILT (2026-07-14):** `insider_loader.py` pulls the SEC's quarterly
+insider transactions data sets (every Form 4, structured, 2006+), keeps open
+market P/S codes only, excludes 10b5-1 plan-flagged rows, keys by CIK, stamps
+by FILING date. Factor `insider_npr_6m` = (buys − sells)/(buys + sells) over
+126 sessions: **IC +0.023 (t 3.5, 192 monthly periods)** — instantly among
+the strongest factors in the model, and its term structure RISES to +0.050
+(t 4.0) at 4Q, the best slow signal we have (Lakonishok-Lee small-cap result
+reproduced). Known limit: the SEC posts each quarter's set ~1-2 weeks after
+quarter end, so the newest cross sections briefly lag (disclosed in UI).
+CMP routine-vs-opportunistic separation is a future refinement.
+
+**2.5 BUILT (2026-07-14):** price-based SUE. `edgar_loader.fetch_earnings_events`
+collects 8-K item 2.02 dates (~67k events, 994 names, archives included) with
+UTC acceptance times converted to Eastern to pick the true reaction session.
+Factor `earn_react_1q` = benchmark-adjusted close-to-close move around the
+print, expiring after 70 sessions: IC +0.013 (t 2.2, 195 periods), positive
+at every horizon (PEAD, Bernard-Thomas). Estimates-based SUE stays gated.
+
+**2.6-lite CLOSED (2026-07-14): Wayback route is dead.** The iShares IJR
+holdings ajax/CSV endpoints have ZERO archived snapshots in the Wayback CDX
+index (probed two URL shapes) — there is nothing to reconstruct membership
+from on that path. Real remaining options for PIT membership: (a) IJR's own
+SEC filings — N-PORT monthly XML holdings 2019+, N-Q quarterly 2004-2019
+(HTML parsing, a full session of work, free); (b) WRDS comp.idxcst_his when
+the account unblocks; (c) Norgate ~$40/mo. Recommendation: (b) if WRDS
+unblocks soon, else (a) as its own session; the survivorship banner stays up
+honestly until then.
+
+**PROMOTION FLIP (2026-07-14, consequence of 2.4/2.5):** the two new well
+signed families lifted the equal weight baseline from ≈0 to IC +0.0105
+(t 1.2) — and the ridge's paired edge over it fell to t = +1.57 < 1.645, so
+**the gate demoted the learned model and score_ew is the default again**,
+even though the learned model itself got STRONGER (IC +0.035, t 3.9; +0.049
+t 3.2 at 4Q). The gate is doing its job (complexity must re-prove itself
+against a better baseline), but the shipped default now has a weak headline
+(spread −0.01, monotonicity +0.77). Whether to redesign promotion (hysteresis,
+multi-horizon evidence) is a PM decision to take deliberately, with the same
+disclosure discipline as the 1.645 bar decision — not a reactive tweak.
 
 **1.6 BUILT (2026-07-13):** walk-forward IC-weighted family blending
 (`model.ic_weighted_score`, `score_icw`): weights ∝ trailing 36-observation

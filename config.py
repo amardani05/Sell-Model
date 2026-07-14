@@ -125,9 +125,10 @@ MOMENTUM_FACTORS: list[str] = [
 #     Anomalies: idiosyncratic volatility (Ang Hodrick Xing Zhang 2006), the
 #     MAX lottery demand effect (Bali Cakici Whitelaw 2011), and betting
 #     against beta (Frazzini Pedersen 2014). A separate FAMILY on purpose: the
-#     family balanced composite caps all price derived families (momentum +
-#     volatility) at 2 of the family count, so adding these cannot let price
-#     signals swamp the fundamental ones.
+#     family balanced composite gives each family ONE vote, so the price
+#     derived families (momentum, volatility, and the earnings reaction) stay
+#     a minority of the family count and can never swamp the fundamental,
+#     flow, and filing based signals no matter how many factors they contain.
 VOLATILITY_FACTORS: list[str] = [
     "ivol_63d",        # residual daily vol vs benchmark, ~3m (HIGH = red flag)
     "max_ret_1m",      # max single day return, last month    (HIGH = lottery = red flag)
@@ -173,6 +174,30 @@ SHORT_ACTIVITY_FACTORS: list[str] = [
     "short_vol_chg",     # 3m change in that share                  (RISING = red flag)
 ]
 
+# --- Insider activity (net selling = red flag) --------------------------------
+#     Anomaly: insider purchases predict returns, strongest in small caps
+#     (Lakonishok Lee 2001; Cohen Malloy Pomorski 2012 sharpen it by separating
+#     routine from opportunistic trades — a refinement not yet attempted here).
+#     Built from the SEC's quarterly insider transactions data sets (Form 4,
+#     open market P/S codes only, 10b5-1 plan flagged rows excluded, keyed by
+#     CIK, stamped by FILING date). The data sets post a week or two after each
+#     quarter ends, so the newest cross sections can miss up to ~3 months of
+#     the trailing window right after a quarter turn — disclosed in the
+#     Methodology tab.
+INSIDER_ACTIVITY_FACTORS: list[str] = [
+    "insider_npr_6m",    # net purchase ratio (B−S)/(B+S), trailing 6m (LOW = red flag)
+]
+
+# --- Earnings surprise, price based (weak reaction = red flag) -----------------
+#     Anomaly: post earnings announcement drift (Bernard Thomas 1989). Without
+#     estimates data the market's own verdict is the surprise proxy: the
+#     benchmark adjusted return around the earnings 8-K (item 2.02), which
+#     then drifts. Event dates from EDGAR submissions (acceptance time decides
+#     whether the reaction day is the filing day or the next session).
+EARNINGS_SURPRISE_FACTORS: list[str] = [
+    "earn_react_1q",     # abnormal return around the latest earnings event (LOW = red flag)
+]
+
 # --- OPTIONAL estimate factors (gated; never faked from yfinance) ------------
 #     Analyst estimate revisions / SUE. yfinance cannot supply these reliably,
 #     so they are OFF by default and only populated by the FactSet / S&P Global
@@ -193,6 +218,8 @@ BASE_FACTORS: list[str] = (
     + INVESTMENT_FACTORS
     + EARNINGS_QUALITY_FACTORS
     + SHORT_ACTIVITY_FACTORS
+    + INSIDER_ACTIVITY_FACTORS
+    + EARNINGS_SURPRISE_FACTORS
 )
 
 # Red flag direction for EVERY factor. +1: high raw value = more sell risk.
@@ -225,6 +252,10 @@ RED_FLAG_DIRECTION: dict[str, int] = {
     # short activity
     "short_vol_ratio": +1,
     "short_vol_chg": +1,
+    # insider activity: net BUYING is bullish, so low/negative NPR is the flag
+    "insider_npr_6m": -1,
+    # earnings surprise: a strong positive reaction drifts UP (less sell risk)
+    "earn_react_1q": -1,
     # estimates (optional)
     "est_revision_3m": -1,
     "sue": -1,
@@ -242,6 +273,8 @@ FACTOR_GROUPS: dict[str, str] = {
     **{f: "Investment" for f in INVESTMENT_FACTORS},
     **{f: "Earnings Quality" for f in EARNINGS_QUALITY_FACTORS},
     **{f: "Short Activity" for f in SHORT_ACTIVITY_FACTORS},
+    **{f: "Insider Activity" for f in INSIDER_ACTIVITY_FACTORS},
+    **{f: "Earnings Surprise" for f in EARNINGS_SURPRISE_FACTORS},
     **{f: "Estimates" for f in ESTIMATE_FACTORS},
 }
 
@@ -487,6 +520,16 @@ FINRA_SHORT_VOLUME_DAILY_URL: str = (
     "https://cdn.finra.org/equity/regsho/daily/CNMSshvol{date:%Y%m%d}.txt")
 FINRA_SHORT_VOLUME_START: str = "2018-10-01"
 
+# SEC insider transactions data sets (roadmap 2.4) — quarterly zips of every
+# Form 3/4/5, structured TSVs, back to 2006. History starts two quarters
+# before the price grid so the trailing 6 month window is populated at the
+# first cross section. See insider_loader.py for the freshness limitation.
+INSIDER_HISTORY_START: str = "2009-07-01"
+
+# EDGAR submissions index (roadmap 2.5) — per company filing lists with items
+# and acceptance timestamps; the earnings event dates come from 8-K item 2.02.
+EDGAR_SUBMISSIONS_URL: str = "https://data.sec.gov/submissions/{name}"
+
 SP600_WIKI_URL: str = "https://en.wikipedia.org/wiki/List_of_S%26P_600_companies"
 # S&P 400 (MidCap) is unioned into the universe so names that graduated out of the
 # 600 up into the 400 are still scored and still match in the portfolio overlay.
@@ -518,6 +561,9 @@ OVERRIDE_MAX_AGE_QUARTERS: int = 2   # default expiry horizon if none supplied
 # Caches
 PRICE_CACHE: Path = DATA_DIR / "price_cache.parquet"
 FINRA_SHORT_VOLUME_CACHE: Path = DATA_DIR / "finra_short_volume.parquet"
+INSIDER_CACHE: Path = DATA_DIR / "insider_transactions.parquet"
+INSIDER_QUARTERS_JSON: Path = DATA_DIR / "insider_quarters.json"
+EARNINGS_EVENTS_CACHE: Path = DATA_DIR / "edgar_earnings_events.parquet"
 VOLUME_CACHE: Path = DATA_DIR / "volume_cache.parquet"
 BENCHMARK_CACHE: Path = DATA_DIR / "benchmark_cache.parquet"
 FUNDAMENTALS_CACHE: Path = DATA_DIR / "fundamentals_cache.parquet"

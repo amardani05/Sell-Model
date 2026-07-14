@@ -104,6 +104,8 @@ mean (no internal sign inconsistency).
 | Investment | `asset_growth_yoy`, `net_issuance_yoy` | high | asset growth (CGS) + dilution (Daniel Titman) |
 | Earnings quality | `accruals_ocf_ni` | low OCF/NI (high accruals) | Sloan accruals |
 | Short activity | `short_vol_ratio`, `short_vol_chg` | high / rising share of volume sold short | informed shorting flow (Boehmer Jones Zhang; Diether Lee Werner). FINRA Reg SHO daily files (flow, not positions), history from Oct 2018 |
+| Insider activity | `insider_npr_6m` | net insider selling (open market Form 4) | insider purchases predict returns, small caps most (Lakonishok Lee). SEC quarterly insider data sets, filing date stamped |
+| Earnings surprise | `earn_react_1q` | weak market reaction to the latest print | post earnings announcement drift (Bernard Thomas). 8-K item 2.02 events from EDGAR; the price based SUE proxy |
 | Estimates *(gated)* | `est_revision_3m`, `sue` | downward revisions / low SUE | post revision / SUE drift |
 
 The estimate factors are **off by default** and only populated by `deep_loader.py`
