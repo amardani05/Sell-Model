@@ -160,6 +160,19 @@ EARNINGS_QUALITY_FACTORS: list[str] = [
     "accruals_ocf_ni",   # operating cash flow / net income (LOW = red flag)
 ]
 
+# --- Short activity (high / rising = red flag) --------------------------------
+#     Anomaly: informed shorting FLOW. Boehmer Jones Zhang (2008) show heavily
+#     shorted names underperform; Diether Lee Werner (2009) document daily
+#     shorting activity predicting weak returns. Built from FINRA Reg SHO
+#     daily short sale volume (see the FINRA note in the data fetch section) —
+#     flow, deliberately NOT presented as short interest positions. History
+#     begins ~2018-10; earlier cross sections carry NaN and the family simply
+#     drops out of those composites under the coverage floors.
+SHORT_ACTIVITY_FACTORS: list[str] = [
+    "short_vol_ratio",   # trailing 3m mean daily short volume share (HIGH = red flag)
+    "short_vol_chg",     # 3m change in that share                  (RISING = red flag)
+]
+
 # --- OPTIONAL estimate factors (gated; never faked from yfinance) ------------
 #     Analyst estimate revisions / SUE. yfinance cannot supply these reliably,
 #     so they are OFF by default and only populated by the FactSet / S&P Global
@@ -179,6 +192,7 @@ BASE_FACTORS: list[str] = (
     + QUALITY_FACTORS
     + INVESTMENT_FACTORS
     + EARNINGS_QUALITY_FACTORS
+    + SHORT_ACTIVITY_FACTORS
 )
 
 # Red flag direction for EVERY factor. +1: high raw value = more sell risk.
@@ -208,6 +222,9 @@ RED_FLAG_DIRECTION: dict[str, int] = {
     "net_issuance_yoy": +1,
     # earnings quality
     "accruals_ocf_ni": -1,
+    # short activity
+    "short_vol_ratio": +1,
+    "short_vol_chg": +1,
     # estimates (optional)
     "est_revision_3m": -1,
     "sue": -1,
@@ -224,6 +241,7 @@ FACTOR_GROUPS: dict[str, str] = {
     **{f: "Quality" for f in QUALITY_FACTORS},
     **{f: "Investment" for f in INVESTMENT_FACTORS},
     **{f: "Earnings Quality" for f in EARNINGS_QUALITY_FACTORS},
+    **{f: "Short Activity" for f in SHORT_ACTIVITY_FACTORS},
     **{f: "Estimates" for f in ESTIMATE_FACTORS},
 }
 
@@ -301,7 +319,12 @@ TORPEDO_FEATURES: list[str] = [
                          # of the sell model's return ranking.
     "roe", "roa", "gross_margin", "fcf_margin", "roe_yoy", "gross_margin_yoy",
     "asset_growth_yoy", "net_issuance_yoy", "accruals_ocf_ni",
-    "short_pct_float",   # torpedo specific: crowded shorts flag blow up risk
+    "short_vol_ratio",   # crowded shorting flags blow up / squeeze risk. Replaces
+                         # short_pct_float here: that yfinance field is a TODAY
+                         # ONLY snapshot that was being broadcast to every
+                         # historical date (a quiet look ahead); the FINRA flow
+                         # ratio is a true per date value. short_pct_float stays
+                         # in the panel as drill down metadata.
 ]
 
 # +1: a higher raw value means MORE absolute risk; -1: means LESS.
@@ -313,7 +336,8 @@ TORPEDO_RISK_DIRECTION: dict[str, int] = {
     "roe_yoy": -1, "gross_margin_yoy": -1,
     "asset_growth_yoy": +1, "net_issuance_yoy": +1,
     "accruals_ocf_ni": -1,
-    "short_pct_float": +1,
+    "short_vol_ratio": +1,
+    "short_pct_float": +1,   # metadata only since the FINRA swap; kept for safety
 }
 
 # Universe percentile buckets for the torpedo tier label.
@@ -447,10 +471,21 @@ EDGAR_COMPANYFACTS_URL: str = "https://data.sec.gov/api/xbrl/companyfacts/CIK{ci
 EDGAR_REQUESTS_PER_SEC: float = 8.0
 EDGAR_CACHE: Path | None = None  # set below after DATA_DIR exists
 
-# FINRA bi monthly short interest (equity short interest) — public flat files.
-FINRA_SHORT_INTEREST_URL: str = (
-    "https://cdn.finra.org/equity/regsho/monthly/"  # consolidated short interest dir
-)
+# FINRA short data (roadmap 2.3 — premise corrected 2026-07-13). The bi
+# monthly short interest POSITION files FINRA publishes for free cover OTC
+# equities only and keep one rolling year online, so they cannot serve an
+# S&P 600 history (verified live against api.finra.org: listed names absent).
+# What IS free for exchange listed names is the daily consolidated short sale
+# VOLUME file (ShortVolume / TotalVolume per symbol, off exchange trades
+# reported to FINRA facilities), available from ~2018-10 on the CDN. The
+# model therefore carries short ACTIVITY (flow) factors, named accordingly —
+# informed shorting is a flow result in the literature anyway (Boehmer Jones
+# Zhang 2008; Diether Lee Werner 2009). True position history (level, days to
+# cover) arrives via Compustat's short interest file when WRDS access lands.
+# FINRA class share symbols use slashes (MOG/A == our MOG-A).
+FINRA_SHORT_VOLUME_DAILY_URL: str = (
+    "https://cdn.finra.org/equity/regsho/daily/CNMSshvol{date:%Y%m%d}.txt")
+FINRA_SHORT_VOLUME_START: str = "2018-10-01"
 
 SP600_WIKI_URL: str = "https://en.wikipedia.org/wiki/List_of_S%26P_600_companies"
 # S&P 400 (MidCap) is unioned into the universe so names that graduated out of the
@@ -482,6 +517,7 @@ OVERRIDE_MAX_AGE_QUARTERS: int = 2   # default expiry horizon if none supplied
 
 # Caches
 PRICE_CACHE: Path = DATA_DIR / "price_cache.parquet"
+FINRA_SHORT_VOLUME_CACHE: Path = DATA_DIR / "finra_short_volume.parquet"
 VOLUME_CACHE: Path = DATA_DIR / "volume_cache.parquet"
 BENCHMARK_CACHE: Path = DATA_DIR / "benchmark_cache.parquet"
 FUNDAMENTALS_CACHE: Path = DATA_DIR / "fundamentals_cache.parquet"

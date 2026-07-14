@@ -103,6 +103,7 @@ mean (no internal sign inconsistency).
 | Quality | `roe`, `roa`, `gross_margin`, `fcf_margin`, `roe_yoy`, `gross_margin_yoy` | low / declining | profitability premium / RMW |
 | Investment | `asset_growth_yoy`, `net_issuance_yoy` | high | asset growth (CGS) + dilution (Daniel Titman) |
 | Earnings quality | `accruals_ocf_ni` | low OCF/NI (high accruals) | Sloan accruals |
+| Short activity | `short_vol_ratio`, `short_vol_chg` | high / rising share of volume sold short | informed shorting flow (Boehmer Jones Zhang; Diether Lee Werner). FINRA Reg SHO daily files (flow, not positions), history from Oct 2018 |
 | Estimates *(gated)* | `est_revision_3m`, `sue` | downward revisions / low SUE | post revision / SUE drift |
 
 The estimate factors are **off by default** and only populated by `deep_loader.py`

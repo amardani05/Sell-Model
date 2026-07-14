@@ -126,6 +126,18 @@ export const FACTOR_META: Record<string, FactorMeta> = {
     redFlag: "LOW OCF/NI: earnings not backed by cash (high accruals)",
     anomaly: "Sloan (1996) accruals anomaly",
   },
+  short_vol_ratio: {
+    label: "Short volume share (3m)", family: "Short Activity",
+    formula: "trailing 63 trading day mean of (daily short sale volume ÷ total volume), FINRA Reg SHO consolidated off exchange file, history from Oct 2018",
+    redFlag: "HIGH share of trading sold short: heavy shorting flow tends to precede underperformance",
+    anomaly: "Informed shorting flow (Boehmer, Jones and Zhang 2008)",
+  },
+  short_vol_chg: {
+    label: "Short volume share change (3m)", family: "Short Activity",
+    formula: "current 63 day mean short volume share minus the same mean 63 trading days earlier",
+    redFlag: "RISING shorting activity versus the prior quarter",
+    anomaly: "Daily shorting activity predicts weak returns (Diether, Lee and Werner 2009)",
+  },
   est_revision_3m: {
     label: "Estimate revision (3m)", family: "Estimates",
     formula: "3 month change in consensus forward EPS (gated source)",
@@ -144,7 +156,7 @@ export const FACTOR_META: Record<string, FactorMeta> = {
 export const FAMILY_COLOR: Record<string, string> = {
   Valuation: "#4e79a7", Momentum: "#f28e2b", Volatility: "#17becf",
   Quality: "#59a14f", Investment: "#b07aa1", "Earnings Quality": "#e15759",
-  Estimates: "#9c755f",
+  "Short Activity": "#8c564b", Estimates: "#9c755f",
 };
 
 export function factorLabel(f: string): string {

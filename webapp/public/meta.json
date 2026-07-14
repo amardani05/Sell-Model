@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-07-13T19:15:23.277480Z",
+  "generated_at": "2026-07-14T18:05:11.207206Z",
   "model": "Relative Sell Model (sector neutral relative underperformance ranking)",
-  "universe_size": 994,
+  "universe_size": 993,
   "n_sectors": 11,
   "n_cross_sections": 199,
   "rebalance_freq": "M",
   "selection_index": "S&P 600",
-  "n_selection": 596,
+  "n_selection": 595,
   "n_quarterly_cross_sections": 67,
-  "panel_rows": 197806,
+  "panel_rows": 197607,
   "n_delisted_carried": 0,
   "horizon_q": 1,
   "horizons_available": [
@@ -19,7 +19,7 @@
   "source": "edgar",
   "cost_bps": 10.0,
   "neutralize_method": "zscore",
-  "n_factors": 19,
+  "n_factors": 21,
   "factor_groups": {
     "pe_ratio": "Valuation",
     "ev_to_ebitda": "Valuation",
@@ -40,6 +40,8 @@
     "asset_growth_yoy": "Investment",
     "net_issuance_yoy": "Investment",
     "accruals_ocf_ni": "Earnings Quality",
+    "short_vol_ratio": "Short Activity",
+    "short_vol_chg": "Short Activity",
     "est_revision_3m": "Estimates",
     "sue": "Estimates"
   },
@@ -53,21 +55,21 @@
   "use_estimate_factors": false,
   "diagnostics": {
     "placebo": {
-      "real_ic": 0.02564942937643929,
-      "real_t": 2.763241831408492,
-      "placebo_ic_mean": 0.0008415374140975374,
-      "placebo_ic_std": 0.003147324351655056,
+      "real_ic": 0.0291283028719279,
+      "real_t": 3.187450540413604,
+      "placebo_ic_mean": 0.0005703999137086234,
+      "placebo_ic_std": 0.001706464442722583,
       "tolerance": 0.03,
       "passed": true
     },
     "lookahead": {
       "no_label_in_features": {
-        "n_features": 19,
+        "n_features": 21,
         "leak_columns": [],
         "passed": true
       },
       "price_factor_truncation": {
-        "checked": 19450,
+        "checked": 19440,
         "mismatches": 0,
         "passed": true
       },

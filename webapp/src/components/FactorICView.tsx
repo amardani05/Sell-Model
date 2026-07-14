@@ -6,7 +6,8 @@ import { FactorICRow } from "../lib/types";
 
 const GROUP_COLOR: Record<string, string> = {
   Valuation: "#4e79a7", Momentum: "#f28e2b", Volatility: "#17becf", Quality: "#59a14f",
-  Investment: "#b07aa1", "Earnings Quality": "#e15759", Estimates: "#9c755f", Other: "#999",
+  Investment: "#b07aa1", "Earnings Quality": "#e15759", "Short Activity": "#8c564b",
+  Estimates: "#9c755f", Other: "#999",
 };
 
 export function FactorICView({ factorIC }: Bundle) {

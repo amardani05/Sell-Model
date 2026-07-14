@@ -74,6 +74,15 @@ def build_real_panel(args) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd
     bundles = fetch_fundamentals(tickers, force_refresh=args.refresh)
     short_int = load_short_interest(bundles)
 
+    logger.info("=== STEP 3b: FINRA daily short sale volume (flow, 2018-10 ->) ===")
+    short_volume = None
+    try:
+        from finra_loader import fetch_short_volume
+        short_volume = fetch_short_volume(tickers, force_refresh=args.refresh)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("FINRA short volume unavailable: %s "
+                       "(short activity factors will be NaN this run)", exc)
+
     fund_override = None
     if args.source == "edgar":
         from edgar_loader import fetch_edgar_fundamentals
@@ -118,7 +127,8 @@ def build_real_panel(args) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd
     logger.info("=== STEP 5: panel assembly ===")
     panel, exclusions = build_panel(prices, bundles, mem, short_interest=short_int,
                                     estimate_ts=estimate_ts, volumes=volumes,
-                                    benchmark_px=bench_px, fund_ts_override=fund_override)
+                                    benchmark_px=bench_px, fund_ts_override=fund_override,
+                                    short_volume=short_volume)
     return panel, prices, exclusions, bench_px
 
 

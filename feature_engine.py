@@ -242,6 +242,32 @@ def _price_factor_panels(
     return out
 
 
+def _short_activity_panels(short_volume: pd.DataFrame | None,
+                           index: pd.DatetimeIndex) -> dict[str, pd.DataFrame]:
+    """Daily wide panels for the short activity factors (data <= each date).
+
+    ``ratio`` = daily ShortVolume / TotalVolume from the FINRA Reg SHO
+    consolidated file (off exchange flow, published the same evening — see
+    finra_loader). ``short_vol_ratio`` is its trailing 63 trading day mean
+    (>= 21 observations); ``short_vol_chg`` is that mean minus the same mean
+    63 trading days earlier. All windows are trailing, so values at t are
+    invariant to truncating history at t. Coverage starts at
+    config.FINRA_SHORT_VOLUME_START (~2018-10): earlier dates stay NaN and
+    the family drops out of those cross sections' composites.
+    """
+    if short_volume is None or short_volume.empty:
+        return {}
+    sv = short_volume.copy()
+    sv = sv[sv["total_vol"] > 0]
+    sv["ratio"] = sv["short_vol"] / sv["total_vol"]
+    ratio = sv.pivot_table(index="date", columns="ticker", values="ratio",
+                           aggfunc="last")
+    ratio = ratio.reindex(index)          # align to price cache trading days
+    d63, d21 = 63, 21
+    level = ratio.rolling(d63, min_periods=d21).mean()
+    return {"short_vol_ratio": level, "short_vol_chg": level - level.shift(d63)}
+
+
 def _rebalance_dates(prices: pd.DataFrame, freq: str = None) -> list[pd.Timestamp]:
     """Trading day period ends present in the price index ("M" or "Q")."""
     freq = freq or config.REBALANCE_FREQ
@@ -407,6 +433,7 @@ def build_panel(
     volumes: pd.DataFrame | None = None,
     benchmark_px: pd.Series | None = None,
     fund_ts_override: dict[str, pd.DataFrame] | None = None,
+    short_volume: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Assemble the long panel of factors + forward relative returns.
 
@@ -436,6 +463,11 @@ def build_panel(
     # --- price factors sampled at the rebalance grid ---
     pf = _price_factor_panels(prices, volumes=volumes, benchmark_px=benchmark_px)
     pf_q = {name: _asof_sample(panel, q_dates) for name, panel in pf.items()}
+
+    # --- short activity factors (FINRA Reg SHO flow), sampled the same way ---
+    sa = _short_activity_panels(short_volume, prices.index)
+    for name, daily in sa.items():
+        pf_q[name] = _asof_sample(daily, q_dates)
 
     # --- forward returns per horizon (delisting aware, splice gated) ---
     anomalies = detect_price_anomalies(prices)

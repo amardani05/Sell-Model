@@ -8,6 +8,7 @@ const DIRECTION_NOTE: Record<string, string> = {
   Quality: "low or declining profitability is the red flag (the quality premium)",
   Investment: "high asset growth and net issuance are red flags (the asset growth and dilution effects)",
   "Earnings Quality": "low operating cash flow over net income means high accruals is the red flag (Sloan)",
+  "Short Activity": "a high or rising share of daily volume sold short is the red flag (informed shorting flow, Boehmer Jones Zhang 2008; FINRA Reg SHO daily files, so history begins Oct 2018 and this is flow, not short interest positions)",
   Estimates: "downward estimate revisions or low SUE are red flags (gated, never from yfinance)",
 };
 

@@ -14,11 +14,11 @@ Three sources, all cached as parquet:
   populate only the most RECENT cross sections. This is the documented depth
   limit; the FactSet / S&P Global loader (``deep_loader.py``) is the upgrade.
 
-* **Short interest** — short % of float. Baseline is the yfinance ``.info``
-  snapshot (current only). FINRA's bi monthly consolidated short interest flat
-  files (``config.FINRA_SHORT_INTEREST_URL``) are the historical upgrade. Short
-  interest is carried as panel METADATA, not a scored factor (it is not in the
-  documented factor taxonomy), but it is available for inspection.
+* **Short interest** — short % of float. yfinance ``.info`` snapshot (current
+  only), carried as panel METADATA for the drill down. The scored, historical
+  short signal lives in ``finra_loader.py`` (Reg SHO daily short sale VOLUME
+  flow — free position history for listed names does not exist; see the FINRA
+  note in config.py).
 
 Per ticker errors are swallowed and logged; one bad ticker never breaks a batch.
 """
@@ -274,9 +274,9 @@ def fetch_fundamentals(tickers: list[str], force_refresh: bool = False) -> dict[
 def load_short_interest(bundles: dict[str, RawBundle]) -> pd.Series:
     """Current short % of float per ticker, from the yfinance info snapshot.
 
-    Baseline only (current snapshot). The historical upgrade is the FINRA
-    consolidated short interest flat files at ``config.FINRA_SHORT_INTEREST_URL``;
-    wire those in for a point in time short interest factor.
+    METADATA ONLY (drill down display): a today only value must never feed a
+    historical statistic — the torpedo screener used to broadcast it to every
+    date and now uses the FINRA short volume ratio instead (finra_loader.py).
     """
     out = {}
     for t, b in bundles.items():
