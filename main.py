@@ -181,7 +181,8 @@ def build_synth_panel(args) -> tuple[pd.DataFrame, None, pd.DataFrame, pd.Series
 def run(args) -> None:
     t0 = time.time()
     config.USE_LEARNED_WEIGHTS = args.learned_weights or config.USE_LEARNED_WEIGHTS
-    horizon = args.horizon_q
+    horizon = (args.horizon or (f"{args.horizon_q}q" if args.horizon_q else None)
+               or config.DEFAULT_HORIZON)
 
     from feature_engine import neutralize_factors, quarter_end_subset
     from model import (equal_weight_score, learned_weight_score, ic_weighted_score,
@@ -344,7 +345,8 @@ def run(args) -> None:
 
     # --- diagnostics gate (placebo runs on the DEFAULT scorer) ---
     logger.info("=== Diagnostics ===")
-    diag = run_diagnostics(panel=panel, prices=prices, score_col=score_col)
+    diag = run_diagnostics(panel=panel, prices=prices, score_col=score_col,
+                           horizon=horizon)
 
     # --- export ---
     latest_date = panel["date"].max()
@@ -367,7 +369,7 @@ def run(args) -> None:
             meta_kwargs=dict(
                 universe_size=int(latest["ticker"].nunique()),
                 n_sectors=int(latest["gics_sector"].nunique()),
-                horizon_q=horizon, source=("synthetic" if args.synthetic else args.source),
+                horizon=horizon, source=("synthetic" if args.synthetic else args.source),
                 learned_enabled=config.USE_LEARNED_WEIGHTS, default_score=score_col,
                 membership_is_pit=(False if args.synthetic else has_real_membership()),
                 diagnostics=diag, n_cross_sections=int(panel["date"].nunique()),
@@ -404,20 +406,22 @@ def _print_summary(panel, score_col, decile_col, latest, latest_date, ic_summari
     print(f"{line}")
     print(f"Universe: {latest['ticker'].nunique()} names, {latest['gics_sector'].nunique()} sectors "
           f"| {panel['date'].nunique()} cross sections ({config.REBALANCE_FREQ}) | default score = {score_col}")
-    print(f"Latest cross section: {pd.Timestamp(latest_date).date()}  (horizon = {horizon}Q forward relative return)")
+    print(f"Latest cross section: {pd.Timestamp(latest_date).date()}  "
+          f"(headline horizon = {str(horizon).upper()} forward relative return; "
+          f"traded sleeves rebalance quarterly)")
     if len(exclusions):
         print(f"DATA INTEGRITY: {len(exclusions)} forward return labels EXCLUDED "
               f"({exclusions['ticker'].nunique()} tickers; splice/extreme gate)")
     print()
 
-    s = ic_summaries[f"{horizon}q"]
+    s = ic_summaries[horizon]
     print(f"VALIDATION  (sector neutral IC, Fama MacBeth + Newey West h-1 lag)")
     print(f"  mean IC = {s.mean_ic:+.4f}   t = {s.t_stat:+.2f}   IR = {s.ir:+.2f}   "
           f"hit = {s.hit_rate*100:.0f}%   over {s.n_periods} periods")
     if era_ic is not None and not era_ic.empty:
         for _, r in era_ic.iterrows():
             print(f"    {r['era']:<14} IC={r['mean_ic']:+.4f} t={r['t_stat']:+.2f} over {r['n_periods']} qtrs")
-    d = decile_summaries[f"{horizon}q"]
+    d = decile_summaries[horizon]
     print(f"  decile spread (best worst) = {d.spread_mean:+.4f}  t = {d.spread_tstat:+.2f}  "
           f"monotonicity rho = {d.monotonicity_rho:+.2f}")
     if not comparison.empty:
@@ -501,8 +505,12 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--synthetic", action="store_true",
                    help="run on a deterministic synthetic panel (no network)")
     p.add_argument("--since", type=str, default=None, help="only score dates >= YYYY MM DD")
-    p.add_argument("--horizon-q", type=int, default=config.DEFAULT_HORIZON_Q, choices=list(config.HORIZONS_Q),
-                   dest="horizon_q", help="forward horizon in quarters for headline metrics")
+    p.add_argument("--horizon", type=str, default=None,
+                   choices=[sfx for sfx, _d, _m in config.TERM_STRUCTURE_HORIZONS],
+                   help="headline label horizon the WHOLE model runs at "
+                        f"(learned fit, promotion, calibration; default {config.DEFAULT_HORIZON})")
+    p.add_argument("--horizon-q", type=int, default=None, choices=list(config.HORIZONS_Q),
+                   dest="horizon_q", help="legacy alias: horizon in quarters (1 or 2)")
     p.add_argument("--cost-bps", type=float, default=config.COST_BPS, dest="cost_bps",
                    help="round trip transaction cost per unit turnover (bps)")
     p.add_argument("--learned-weights", action="store_true", dest="learned_weights",

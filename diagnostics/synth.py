@@ -61,6 +61,9 @@ def make_synthetic_panel(
             rec["short_pct_float"] = abs(rng.normal(0.05, 0.04))
             rec["fwd_ret_1q"] = abs_ret
             rec["fwd_ret_2q"] = abs_ret + sector_ret[sec] + rng.normal(0, noise)
+            # diagnostic/headline horizons: same planted relationship, scaled
+            rec["fwd_ret_1m"] = abs_ret / 3.0 + rng.normal(0, noise / 3.0)
+            rec["fwd_ret_4q"] = 2.0 * (abs_ret + sector_ret[sec]) + rng.normal(0, noise)
             rec["delisted"] = False
             rows.append(rec)
 
@@ -68,13 +71,16 @@ def make_synthetic_panel(
 
     # plant a few delistings: terminal return, strongest underperformer
     dl = panel.sample(frac=delist_frac, random_state=seed).index
-    panel.loc[dl, "fwd_ret_1q"] = config.DELISTING_TERMINAL_RETURN
-    panel.loc[dl, "fwd_ret_2q"] = config.DELISTING_TERMINAL_RETURN
+    suffixes = [f"{h}q" for h in config.HORIZONS_Q]
+    suffixes += [sfx for sfx, _d, _m in config.TERM_STRUCTURE_HORIZONS
+                 if sfx not in suffixes]
+    for sfx in suffixes:
+        panel.loc[dl, f"fwd_ret_{sfx}"] = config.DELISTING_TERMINAL_RETURN
     panel.loc[dl, "delisted"] = True
 
-    # sector relative labels
-    for h in config.HORIZONS_Q:
-        col = f"fwd_ret_{h}q"
+    # sector relative labels at every horizon the pipeline knows
+    for sfx in suffixes:
+        col = f"fwd_ret_{sfx}"
         med = panel.groupby(["date", "gics_sector"])[col].transform("median")
-        panel[f"fwd_rel_ret_{h}q"] = panel[col] - med
+        panel[f"fwd_rel_ret_{sfx}"] = panel[col] - med
     return panel

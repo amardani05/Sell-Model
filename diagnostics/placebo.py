@@ -32,7 +32,7 @@ def shuffle_scores_within_date(panel: pd.DataFrame, score_col: str, seed: int = 
 
 
 def run_placebo(panel: pd.DataFrame, score_col: str = "score_ew",
-                horizon_q: int = config.DEFAULT_HORIZON_Q, n_trials: int = 10) -> dict:
+                horizon_q=config.DEFAULT_HORIZON, n_trials: int = 10) -> dict:
     real = summarize_ic(panel, score_col, horizon_q)
     placebo_means = []
     for k in range(n_trials):

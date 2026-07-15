@@ -58,7 +58,31 @@ MIN_NAMES_PER_SECTOR: int = 5
 # =============================================================================
 # Horizons (in quarters) at which forward RELATIVE returns are measured.
 HORIZONS_Q: tuple[int, ...] = (1, 2)
-DEFAULT_HORIZON_Q: int = 1
+DEFAULT_HORIZON_Q: int = 1   # legacy int form; the model runs on DEFAULT_HORIZON
+
+# The HEADLINE horizon the whole model runs at (PM decision, Amar,
+# 2026-07-15): the learned model's training label, the blend's trailing ICs,
+# the promotion test, calibration, per factor ICs, and every headline
+# statistic follow this label. IMA enters positions with a ~2 year intended
+# hold, so the slow horizon is the default; any of 1m/1q/2q/4q via
+# ``--horizon``. Two things deliberately do NOT follow it: the traded
+# sleeves and Monte Carlo still rebalance QUARTERLY (a 4Q aimed ranking
+# refreshed quarterly is exactly IMA's review cadence; annual rebalancing
+# would just throw away information), and the published exclusions log
+# still enumerates the quarterly label events (the splice gate itself
+# protects every horizon).
+DEFAULT_HORIZON: str = "4q"
+
+
+def horizon_spec(h) -> tuple[str, int]:
+    """Resolve a horizon given as suffix ("1m"/"1q"/"2q"/"4q") or legacy int
+    quarters into (label_suffix, months)."""
+    if isinstance(h, str):
+        table = {s: m for s, _d, m in TERM_STRUCTURE_HORIZONS}
+        if h not in table:
+            raise ValueError(f"unknown horizon {h!r}; expected one of {sorted(table)}")
+        return h, table[h]
+    return f"{int(h)}q", 3 * int(h)
 # Cross sections are cut MONTHLY (~200 observation dates back to 2010): the
 # labels still look one/two quarters ahead, so adjacent months overlap and the
 # Newey West lag count scales accordingly (see validate._nw_lags). The monthly

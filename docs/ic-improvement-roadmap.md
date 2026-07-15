@@ -53,6 +53,23 @@ the account unblocks; (c) Norgate ~$40/mo. Recommendation: (b) if WRDS
 unblocks soon, else (a) as its own session; the survivorship banner stays up
 honestly until then.
 
+**HEADLINE HORIZON SWITCHABLE, DEFAULT 4Q (2026-07-15, PM directed):** the
+whole model now runs at any label horizon (`--horizon {1m,1q,2q,4q}`,
+`config.DEFAULT_HORIZON = "4q"`): the ridge's training label, the blend's
+trailing ICs and embargo, the promotion test, calibration, per-factor ICs,
+placebo, stress/regime tables, and every headline stat follow it. Rationale:
+IMA enters positions with a ~2 year intended hold, so the slow horizon is the
+product's question. Two things deliberately stay quarterly: the traded
+sleeves/MC (a 4Q-aimed rank refreshed quarterly = IMA's cadence) and the
+exclusions log. RESULT of training ON the 4Q label (vs merely evaluating the
+1Q model at 4Q): learned IC +0.052 -> **+0.070 (t 3.6, IR 0.70, hit 75%)**,
+decile spread +27.2 points per 4Q window with monotonicity -1.00, MC P(beat)
+63/78/96. Promotion margin at 4Q is thin (paired t +1.66 vs 1.645 bar;
+hysteresis carries it). Honest costs: ~15 independent 4Q windows (NW lags 11
+keep t stats honest but yearly segmentation matters more), and the newest 12
+months of cross sections are scored but ungradable until their labels
+realize. 1Q remains one flag away.
+
 **SECTIONS 3 + 4 BUILT, HYSTERESIS ADOPTED (2026-07-15, PM directed):**
 (a) **Hysteresis on promotion** (`DEMOTION_MIN_T = 0`, state in
 data/promotion_state.json): once promoted at 1.645, the learned model keeps

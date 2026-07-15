@@ -24,7 +24,8 @@ from diagnostics.survivorship_assert import run_survivorship
 logger = logging.getLogger("diagnostics")
 
 
-def run_all(panel=None, prices=None, score_col: str = "score_ew") -> dict:
+def run_all(panel=None, prices=None, score_col: str = "score_ew",
+            horizon=config.DEFAULT_HORIZON) -> dict:
     if panel is None:
         logger.info("No panel supplied; building synthetic panel for diagnostics")
         raw = make_synthetic_panel()
@@ -34,7 +35,7 @@ def run_all(panel=None, prices=None, score_col: str = "score_ew") -> dict:
     results = {
         # The placebo must test the DEFAULT scorer (the one the site broadcasts):
         # shuffling it within each date must collapse its IC toward zero.
-        "placebo": run_placebo(panel, score_col),
+        "placebo": run_placebo(panel, score_col, horizon_q=horizon),
         "lookahead": run_lookahead(prices, panel),
         "survivorship": run_survivorship(),
     }

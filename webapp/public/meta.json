@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-15T14:17:21.984552Z",
+  "generated_at": "2026-07-15T17:37:05.108800Z",
   "model": "Relative Sell Model (sector neutral relative underperformance ranking)",
   "universe_size": 993,
   "n_sectors": 11,
@@ -10,7 +10,11 @@
   "n_quarterly_cross_sections": 67,
   "panel_rows": 197607,
   "n_delisted_carried": 0,
-  "horizon_q": 1,
+  "horizon": "4q",
+  "horizon_label": "4Q",
+  "horizon_phrase": "next 4 quarters",
+  "horizon_months": 12,
+  "horizon_q": 4,
   "horizons_available": [
     "1m",
     "1q",
@@ -59,10 +63,10 @@
   "use_estimate_factors": false,
   "diagnostics": {
     "placebo": {
-      "real_ic": 0.03345699495967493,
-      "real_t": 3.932348371623788,
-      "placebo_ic_mean": 9.22901595663211e-05,
-      "placebo_ic_std": 0.001607436074376076,
+      "real_ic": 0.06570631044917144,
+      "real_t": 3.5929609069803616,
+      "placebo_ic_mean": 0.00021753231252619702,
+      "placebo_ic_std": 0.0032594074605165457,
       "tolerance": 0.03,
       "passed": true
     },

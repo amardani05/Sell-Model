@@ -73,7 +73,7 @@ export function PortfolioOverlayView({ meta, scores, drilldown, transitions, ove
       `|---|---|---|---|---|---|---|`,
       ...rows,
       ``,
-      `Decile 10 = worst expected sector relative return over the next ${meta.horizon_q}Q. Flags are sector neutral z scores; see the model dashboard for full per name decompositions. Screen output is evidence for review, not a trade instruction.`,
+      `Decile 10 = worst expected sector relative return over the ${meta.horizon_phrase ?? `next ${meta.horizon_q}Q`}. Flags are sector neutral z scores; see the model dashboard for full per name decompositions. Screen output is evidence for review, not a trade instruction.`,
     ].join("\n");
     try { await navigator.clipboard.writeText(md); setCopied(true); setTimeout(() => setCopied(false), 1600); }
     catch { /* clipboard unavailable */ }
@@ -94,7 +94,7 @@ export function PortfolioOverlayView({ meta, scores, drilldown, transitions, ove
         </p>
         <div className="help-note">
           <strong>How IMA should read this.</strong> A holding in decile 9 or 10 is a prompt to underwrite the thesis again, not an
-          automatic sell: the model expects it to lag its sector peers over the next {meta.horizon_q} quarter(s),
+          automatic sell: the model expects it to lag its sector peers over the {meta.horizon_phrase ?? `next ${meta.horizon_q} quarter(s)`},
           and the burden shifts to the thesis to explain why the flags are wrong or already priced. The
           <em> QoQ Δ</em> column shows decile movement since last quarter; deterioration is often more
           informative than level. <em>Double flag</em> means the name is both a sector relative sell (decile ≥ 9)

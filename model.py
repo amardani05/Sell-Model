@@ -162,7 +162,7 @@ def learned_weight_score(
     since they are already sector z scores). Label = forward relative return at
     ``horizon_q``. Trains only on dates strictly before each prediction date.
     """
-    label = f"fwd_rel_ret_{horizon_q}q"
+    label = f"fwd_rel_ret_{config.horizon_spec(horizon_q)[0]}"
     cols = neutral_columns(panel)
     df = panel.copy()
     df["score_ml"] = np.nan
@@ -197,7 +197,7 @@ def learned_weight_score(
         n_fit += 1
 
     df["decile_ml"] = assign_sector_deciles(df, "score_ml")
-    logger.info("Learned weight (%s, h=%dq): %d OOS cross sections scored",
+    logger.info("Learned weight (%s, h=%s): %d OOS cross sections scored",
                 model_name, horizon_q, n_fit)
     return df
 
@@ -279,7 +279,7 @@ def ic_weighted_score(
     fam_cols = [c for c in panel.columns if c.startswith("fam_") and c.endswith("__score")]
     if not fam_cols:
         raise ValueError("No family score columns found; run equal_weight_score first")
-    label = f"fwd_rel_ret_{horizon_q}q"
+    label = f"fwd_rel_ret_{config.horizon_spec(horizon_q)[0]}"
     df = panel.copy()
 
     # Trailing ICs are estimated on the selection universe, like the learned fit.
@@ -291,7 +291,7 @@ def ic_weighted_score(
     n_fam = len(fam_cols)
     equal_w = {c: 1.0 / n_fam for c in fam_cols}
     dates = sorted(df["date"].unique())
-    embargo = pd.DateOffset(months=3 * int(horizon_q))
+    embargo = pd.DateOffset(months=config.horizon_spec(horizon_q)[1])
 
     weight_rows = []
     weights_at: dict[pd.Timestamp, dict[str, float]] = {}
@@ -338,7 +338,7 @@ def ic_weighted_score(
 
     weights_history = pd.DataFrame(weight_rows)
     n_active = int((weights_history.groupby("date")["weight"].std() > 1e-12).sum())
-    logger.info("IC weighted blend (h=%dq, window=%d, shrink=%.2f): %d/%d dates use "
+    logger.info("IC weighted blend (h=%s, window=%d, shrink=%.2f): %d/%d dates use "
                 "IC weights (rest equal weight until %d realized ICs exist)",
                 horizon_q, window, shrink, n_active, len(dates), min_realized)
     return df, weights_history

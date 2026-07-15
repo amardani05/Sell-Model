@@ -13,6 +13,10 @@ export interface Meta {
   panel_rows: number;
   n_delisted_carried: number;
   horizon_q: number;
+  horizon?: string;
+  horizon_label?: string;
+  horizon_phrase?: string;
+  horizon_months?: number;
   horizons_available: (string | number)[];
   benchmark: string;
   source: string;
@@ -81,7 +85,7 @@ export interface FactorICRow {
   factor: string; group: string; mean_ic: number | null; t_stat: number | null;
   ir: number | null; hit_rate: number | null; n_periods: number;
 }
-export interface FactorIC { horizon_q: number; factors: FactorICRow[]; }
+export interface FactorIC { horizon?: string; horizon_label?: string; horizon_q?: number; factors: FactorICRow[]; }
 
 export interface ICBlock {
   mean_ic: number | null; t_stat: number | null; ir: number | null;

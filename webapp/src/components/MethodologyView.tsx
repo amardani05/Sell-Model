@@ -39,7 +39,7 @@ export function MethodologyView({ meta }: Bundle) {
         <p>
           Rank S&amp;P 600 (SmallCap) and S&amp;P 400 (MidCap) stocks by expected <strong>relative
           underperformance versus their <Term id="gics"> GICS</Term> sector peers</strong> over a forward
-          horizon (default {meta.horizon_q}Q). The S&amp;P 400 is unioned in so names that graduated out of the
+          horizon (headline {meta.horizon_label ?? `${meta.horizon_q}Q`}, switchable at run time; traded sleeves always rebalance quarterly). The S&amp;P 400 is unioned in so names that graduated out of the
           600 up into the 400 are still scored.
           The label for every name on every rebalance date is its <Term id="relativereturn">sector relative
           forward return</Term>: the stock return minus the median return of its sector peers over the same
@@ -96,7 +96,7 @@ export function MethodologyView({ meta }: Bundle) {
         <h3>Scoring grid</h3>
         <p>
           Cross sections are cut <strong>monthly back to 2010</strong> (~200 observation dates). Labels still
-          look {meta.horizon_q} quarter(s) ahead, so adjacent months are
+          look {(meta.horizon_phrase ?? `${meta.horizon_q} quarter(s)`).replace("next ", "")} ahead, so adjacent months are
           <Term id="overlapping"> overlapping observations</Term> and the <Term id="neweywest">Newey West</Term>
           lag count scales with the overlap. This is the standard Jegadeesh Titman construction, adopted for
           statistical power. Traded constructions (backtest, Monte Carlo) and quarter over quarter comparisons

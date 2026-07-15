@@ -12,7 +12,7 @@ const TIER_COLORS: Record<string, string> = {
 export function ValidationBacktestView({ meta, validation, backtest, mcSim, exclusions, overrides }: Bundle) {
   // Horizon keys are label suffixes ("1m"/"1q"/"2q"/"4q"); headline is quarterly.
   const horizons = meta.horizons_available.map(String);
-  const [h, setH] = useState<string>(`${meta.horizon_q}q`);
+  const [h, setH] = useState<string>(meta.horizon ?? `${meta.horizon_q}q`);
   const ic = validation.ic[h];
   const dec = validation.deciles[h];
   const cal = validation.calibration ?? [];
@@ -190,7 +190,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
         <h3><Term id="reliability">Reliability</Term>: P(underperform sector) by bucket</h3>
         <p className="muted small">
           The probability view: for each score bucket, how often did names actually trail their sector median
-          over the next {meta.horizon_q} quarter(s)? 50% (dashed) is a coin flip because the target is relative to the
+          over the {meta.horizon_phrase ?? `next ${meta.horizon_q} quarter(s)`}? 50% (dashed) is a coin flip because the target is relative to the
           median. A useful sell model pushes the right hand buckets meaningfully above 50%. This chart is the
           honest translation of the score into the language a PM uses.
         </p>
@@ -616,7 +616,10 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
       {/* ================= BACKTEST ================= */}
       <h2 className="span-12 section-head">Backtest: quarterly rebalance, {meta.cost_bps} <Term id="turnover">bps</Term> cost</h2>
       <div className="help-note span-12">
-        <strong>The screen is judged against its own equal weight universe, not the ETF.</strong> An equal weight
+        <strong>The screen is judged against its own equal weight universe, not the ETF.</strong> The sleeves
+        rebalance <strong>quarterly regardless of the headline horizon</strong>: a slow horizon ranking
+        refreshed every quarter matches IMA's review cadence, and the per quarter return arithmetic is
+        unchanged. An equal weight
         small cap portfolio structurally beats the cap weighted {meta.benchmark}, so comparing "avoid the worst
         decile" to {meta.benchmark} would credit the model with the equal weight effect. The fair test is the
         gap between the two solid lines: everything equal weight, with and without the flagged decile.

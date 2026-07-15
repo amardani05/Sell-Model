@@ -7,7 +7,7 @@ import { Ticker, UniverseToggle, inUniverse } from "./TickerFlag";
 import { ScoreRow } from "../lib/types";
 
 export function Overview({ meta, scores, validation, exclusions }: Bundle) {
-  const h = `${meta.horizon_q}q`;
+  const h = meta.horizon ?? `${meta.horizon_q}q`;
   const ic = validation.ic[h];
   const dec = validation.deciles[h];
   const cal = validation.calibration ?? [];
@@ -28,7 +28,7 @@ export function Overview({ meta, scores, validation, exclusions }: Bundle) {
         <h2>What this model answers</h2>
         <p>
           Rank S&amp;P 600 and 400 stocks by expected <strong>relative underperformance versus their <Term id="gics">GICS</Term> sector
-          peers</strong> over the next {meta.horizon_q} quarter(s). The output is a continuous
+          peers</strong> over the {meta.horizon_phrase ?? `next ${meta.horizon_q} quarter(s)`}. The output is a continuous
           <Term id="relativereturn"> relative risk</Term> score and a <Term id="sectorneutral">sector
           neutral</Term> <Term id="decile" /> (1 = best expected relative return, 10 = the sell sleeve).
         </p>
@@ -61,7 +61,7 @@ export function Overview({ meta, scores, validation, exclusions }: Bundle) {
         </div>
       </section>
 
-      <KPI label={<><Term id="sectorneutral">Sector neutral</Term> <Term id="ic">IC</Term> (h={meta.horizon_q}Q)</>} value={fmtSigned(ic?.mean_ic)} sub={<>t = {fmt(ic?.t_stat)} · <Term id="ir">IR</Term> {fmt(ic?.ir)}</>} good={(ic?.mean_ic ?? 0) > 0} />
+      <KPI label={<><Term id="sectorneutral">Sector neutral</Term> <Term id="ic">IC</Term> (h={meta.horizon_label ?? `${meta.horizon_q}Q`})</>} value={fmtSigned(ic?.mean_ic)} sub={<>t = {fmt(ic?.t_stat)} · <Term id="ir">IR</Term> {fmt(ic?.ir)}</>} good={(ic?.mean_ic ?? 0) > 0} />
       <KPI label={<><Term id="ic">IC</Term> <Term id="hitrate">hit rate</Term></>} value={ic ? `${Math.round((ic.hit_rate ?? 0) * 100)}%` : "—"} sub={`${ic?.n_periods ?? 0} cross sections`} />
       <KPI label={<><Term id="decile">Decile</Term> spread (best − worst)</>} value={fmtSigned(dec?.spread_mean)} sub={`t = ${fmt(dec?.spread_tstat)}`} good={(dec?.spread_mean ?? 0) > 0} />
       <KPI label={<>Decile <Term id="monotonicity">monotonicity</Term> ρ</>} value={fmt(dec?.monotonicity_rho)} sub="want near −1 (higher sell decile means lower return)" good={(dec?.monotonicity_rho ?? 0) < 0} />
@@ -83,7 +83,7 @@ export function Overview({ meta, scores, validation, exclusions }: Bundle) {
         <h3><Term id="reliability">Reliability</Term>: P(underperform sector) by score bucket</h3>
         <p className="muted small">
           The score translated into the language a PM uses: for each bucket, how often names actually trailed
-          their sector median over the next {meta.horizon_q} quarter(s). 50% (dashed) is a coin flip; a working
+          their sector median over the {meta.horizon_phrase ?? `next ${meta.horizon_q} quarter(s)`}. 50% (dashed) is a coin flip; a working
           model climbs to the right. Full detail, error bars, and the diagnostics gate live on the Validation tab.
         </p>
         {cal.length ? (
@@ -104,7 +104,7 @@ export function Overview({ meta, scores, validation, exclusions }: Bundle) {
       </section>
 
       <section className="card span-6">
-        <h3><Term id="ic">IC</Term> time series (h={meta.horizon_q}Q)</h3>
+        <h3><Term id="ic">IC</Term> time series (h={meta.horizon_label ?? `${meta.horizon_q}Q`})</h3>
         {icSeries.length ? (
           <Plot height={260}
             data={[{

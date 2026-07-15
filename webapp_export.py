@@ -104,8 +104,10 @@ def export_sector_deciles(latest: pd.DataFrame, decile_col: str) -> None:
     _write(payload, "sector_deciles")
 
 
-def export_factor_ic(factor_ic: pd.DataFrame, horizon_q: int) -> None:
-    _write({"horizon_q": horizon_q, "factors": _records(factor_ic)}, "factor_ic")
+def export_factor_ic(factor_ic: pd.DataFrame, horizon) -> None:
+    sfx, _months = config.horizon_spec(horizon)
+    _write({"horizon": sfx, "horizon_label": sfx.upper(),
+            "factors": _records(factor_ic)}, "factor_ic")
 
 
 def export_validation(ic_summaries: dict, decile_summaries: dict,
@@ -349,7 +351,7 @@ def export_transitions(panel: pd.DataFrame, decile_col: str) -> None:
     }, "transitions")
 
 
-def export_meta(*, universe_size, n_sectors, horizon_q, source, learned_enabled,
+def export_meta(*, universe_size, n_sectors, horizon, source, learned_enabled,
                 default_score, membership_is_pit, diagnostics, n_cross_sections,
                 cost_bps, panel_rows, n_delisted, exclusions_summary=None,
                 index_counts=None, rebalance_freq="Q", selection_index=None,
@@ -367,7 +369,13 @@ def export_meta(*, universe_size, n_sectors, horizon_q, source, learned_enabled,
                                        if n_quarterly_cross_sections is not None else None),
         "panel_rows": int(panel_rows),
         "n_delisted_carried": int(n_delisted),
-        "horizon_q": int(horizon_q),
+        "horizon": config.horizon_spec(horizon)[0],
+        "horizon_label": config.horizon_spec(horizon)[0].upper(),
+        "horizon_phrase": {"1m": "next month", "1q": "next quarter",
+                           "2q": "next 2 quarters", "4q": "next 4 quarters"
+                           }[config.horizon_spec(horizon)[0]],
+        "horizon_months": config.horizon_spec(horizon)[1],
+        "horizon_q": max(1, config.horizon_spec(horizon)[1] // 3),
         "horizons_available": [sfx for sfx, _d, _m in config.TERM_STRUCTURE_HORIZONS],
         "benchmark": config.BENCHMARK_TICKER,
         "source": source,

@@ -57,9 +57,9 @@ def _nw_lags_months(months: int) -> int:
     return max(1, periods - 1)
 
 
-def _nw_lags(horizon_q: int) -> int:
-    """Newey West lags for an ``horizon_q`` quarter label (see _nw_lags_months)."""
-    return _nw_lags_months(3 * int(horizon_q))
+def _nw_lags(horizon) -> int:
+    """Newey West lags for a horizon (suffix or int quarters); see _nw_lags_months."""
+    return _nw_lags_months(config.horizon_spec(horizon)[1])
 
 
 def _hac_tstat(series: pd.Series, lags: int = 1) -> tuple[float, float, float]:
@@ -87,9 +87,12 @@ def _winsorize_series(s: pd.Series, pct: float = config.LABEL_WINSOR_PCT) -> pd.
 # =============================================================================
 # Information Coefficient
 # =============================================================================
-def ic_time_series(panel: pd.DataFrame, score_col: str, horizon_q: int) -> pd.DataFrame:
-    """Per date skill signed IC = -Spearman(score, fwd_rel_ret). Cols: date, ic, n."""
-    return ic_series_for_label(panel, score_col, f"fwd_rel_ret_{horizon_q}q")
+def ic_time_series(panel: pd.DataFrame, score_col: str, horizon) -> pd.DataFrame:
+    """Per date skill signed IC = -Spearman(score, fwd_rel_ret). Cols: date, ic, n.
+
+    ``horizon`` is a label suffix ("1m"/"1q"/"2q"/"4q") or legacy int quarters."""
+    sfx, _months = config.horizon_spec(horizon)
+    return ic_series_for_label(panel, score_col, f"fwd_rel_ret_{sfx}")
 
 
 def ic_series_for_label(panel: pd.DataFrame, score_col: str, label: str) -> pd.DataFrame:
@@ -121,8 +124,8 @@ class ICSummary:
     series: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
-def summarize_ic(panel: pd.DataFrame, score_col: str, horizon_q: int) -> ICSummary:
-    return summarize_ic_for_label(panel, score_col, f"{horizon_q}q", 3 * horizon_q)
+def summarize_ic(panel: pd.DataFrame, score_col: str, horizon) -> ICSummary:
+    return summarize_ic_for_label(panel, score_col, *config.horizon_spec(horizon))
 
 
 def summarize_ic_for_label(panel: pd.DataFrame, score_col: str,
@@ -152,8 +155,8 @@ class DecileSummary:
     monotonicity_rho: float             # Spearman(decile, mean_rel_ret); want < 0
 
 
-def decile_analysis(panel: pd.DataFrame, decile_col: str, horizon_q: int) -> DecileSummary:
-    return decile_analysis_for_label(panel, decile_col, f"{horizon_q}q", 3 * horizon_q)
+def decile_analysis(panel: pd.DataFrame, decile_col: str, horizon) -> DecileSummary:
+    return decile_analysis_for_label(panel, decile_col, *config.horizon_spec(horizon))
 
 
 def decile_analysis_for_label(panel: pd.DataFrame, decile_col: str,
@@ -218,7 +221,7 @@ def calibration_fm(panel: pd.DataFrame, score_col: str, horizon_q: int, q: int =
       mean_score                   average score per bin (x axis sanity)
       n_dates / n_obs              sample sizes
     """
-    label = f"fwd_rel_ret_{horizon_q}q"
+    label = f"fwd_rel_ret_{config.horizon_spec(horizon_q)[0]}"
     d = panel[["date", score_col, label]].dropna()
     per_date_rows: list[pd.DataFrame] = []
     for t, g in d.groupby("date"):
@@ -415,7 +418,7 @@ def stress_window_table(panel: pd.DataFrame, score_col: str, decile_col: str,
     row describes flags raised DURING the episode.
     """
     ic_ts = ic_time_series(panel, score_col, horizon_q).set_index("date")["ic"]
-    label = f"fwd_rel_ret_{horizon_q}q"
+    label = f"fwd_rel_ret_{config.horizon_spec(horizon_q)[0]}"
     d = panel[[decile_col, label, "date"]].dropna()
     n_dec = config.N_DECILES
 
@@ -523,7 +526,7 @@ def factor_zoo_null(panel: pd.DataFrame, score_col: str, horizon_q: int,
     """
     rng = np.random.default_rng(seed)
     cols = [f"{f}__n" for f in config.active_factors() if f"{f}__n" in panel.columns]
-    label = f"fwd_rel_ret_{horizon_q}q"
+    label = f"fwd_rel_ret_{config.horizon_spec(horizon_q)[0]}"
     if len(cols) < 4 or label not in panel.columns:
         return {"n_draws": 0, "real_ic": np.nan, "null_mean": np.nan,
                 "null_p95": np.nan, "p_value": np.nan}
