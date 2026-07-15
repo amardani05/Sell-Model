@@ -50,6 +50,16 @@ export function TorpedoView({ meta, scores, torpedo }: Bundle) {
           torpedo risk; a whole frothy sector can screen high on the torpedo while its deciles net to neutral.
         </div>
         <div className="help-note">
+          <strong>Expect the two rankings to disagree, sometimes sharply.</strong> The torpedo counts every
+          documented red flag as risk, equal weight. The sell model's learned weights instead follow what has
+          actually predicted sector relative underperformance in this history, and that fit FADES several
+          documented flags (weak quality, high accruals, high volatility carried the wrong sign in this sample),
+          so a name loaded with those traits can sit high on the torpedo and comfortably mid pack on the sell
+          deciles at the same time. That is a finding about this market regime, not a malfunction; the two lenses
+          answer different questions with different evidence, and the names where they <em>agree</em> (the top
+          right of the scatter) are the strongest signal on the platform.
+        </div>
+        <div className="help-note">
           <strong>The four corners of the scatter below.</strong> Top right is the danger zone: a name that both
           looks weak against its sector peers and screens as risky against the whole market, the strongest case
           to review. Bottom right is a sector relative sell that is not otherwise fragile, often a fully valued
