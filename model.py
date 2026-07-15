@@ -202,6 +202,41 @@ def learned_weight_score(
     return df
 
 
+def add_interaction_features(panel: pd.DataFrame) -> pd.DataFrame:
+    """Add the pre registered interaction columns (``ix_*__n``) for the ridge.
+
+    Each is the product of two direction aligned FAMILY scores
+    (config.INTERACTION_TERMS), re standardized within the peer group so the
+    ridge sees comparable scales. They enter the feature set through
+    ``neutral_columns`` (the ``__n`` suffix) and NOWHERE else: FACTOR_GROUPS
+    does not know them, so the equal weight composite, the IC weighted blend,
+    the factor IC table, and the drill down are untouched. Missing family
+    scores propagate NaN (imputed to 0 = peer mean inside the fit, exactly
+    like the main effects).
+    """
+    df = panel.copy()
+    keys = _group_keys(df)
+
+    def _restd(s: pd.Series) -> pd.Series:
+        mu, sd = s.mean(), s.std(ddof=0)
+        return (s - mu) / sd if (sd and np.isfinite(sd) and sd > 0) else s * 0.0
+
+    added = []
+    for col, fam_a, fam_b in config.INTERACTION_TERMS:
+        a = f"fam_{fam_a.replace(' ', '_').lower()}__score"
+        b = f"fam_{fam_b.replace(' ', '_').lower()}__score"
+        if a not in df.columns or b not in df.columns:
+            continue
+        df["_ix_raw"] = df[a] * df[b]
+        df[f"{col}__n"] = (df.groupby(keys, group_keys=False)["_ix_raw"]
+                             .apply(_restd))
+        added.append(col)
+    df = df.drop(columns=["_ix_raw"], errors="ignore")
+    if added:
+        logger.info("Interaction features for the learned model: %s", ", ".join(added))
+    return df
+
+
 # =============================================================================
 # IC weighted family blend (roadmap 1.6 — the transparent middle ground)
 # =============================================================================

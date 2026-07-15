@@ -117,7 +117,10 @@ def export_validation(ic_summaries: dict, decile_summaries: dict,
                       stress: pd.DataFrame | None = None,
                       term_structure: pd.DataFrame | None = None,
                       icw_weights: pd.DataFrame | None = None,
-                      icw_paired: dict | None = None) -> None:
+                      icw_paired: dict | None = None,
+                      factor_zoo: dict | None = None,
+                      regime_ic: pd.DataFrame | None = None,
+                      exposures: pd.DataFrame | None = None) -> None:
     """ic_summaries / decile_summaries keyed by horizon_q -> validate dataclasses."""
     ic_payload = {}
     for h, s in ic_summaries.items():
@@ -152,6 +155,9 @@ def export_validation(ic_summaries: dict, decile_summaries: dict,
         "icw_params": {"window": config.ICW_TRAILING_WINDOW,
                        "shrinkage": config.ICW_SHRINKAGE,
                        "min_realized": config.ICW_MIN_REALIZED},
+        "factor_zoo": factor_zoo,
+        "ic_by_regime": _records(regime_ic) if regime_ic is not None else [],
+        "screen_exposures": _records(exposures) if exposures is not None else [],
         "label_winsor_pct": config.LABEL_WINSOR_PCT,
         "era_min_avg_factors": config.ERA_MIN_AVG_FACTORS,
     }, "validation")
@@ -198,7 +204,8 @@ def export_exclusions(exclusions: pd.DataFrame) -> None:
 
 
 def export_drilldown(panel: pd.DataFrame, latest: pd.DataFrame,
-                     score_col: str, decile_col: str) -> None:
+                     score_col: str, decile_col: str,
+                     earnings_events: pd.DataFrame | None = None) -> None:
     """Per name factor decomposition for the drill down panel.
 
     For every name in the latest cross section: raw factor values, the direction
@@ -216,6 +223,13 @@ def export_drilldown(panel: pd.DataFrame, latest: pd.DataFrame,
     prev_date = older[-1] if older else (dates[-2] if len(dates) > 1 else None)
     prev = panel[panel["date"] == prev_date] if prev_date is not None else pd.DataFrame()
     prev_by_tk = prev.set_index("ticker") if not prev.empty else pd.DataFrame()
+
+    # event awareness (roadmap section 4): last earnings print per name, so a
+    # flag raised the week after a print reads differently from a stale one.
+    last_print: dict = {}
+    if earnings_events is not None and len(earnings_events):
+        ev = earnings_events[earnings_events["reaction_date"] <= pd.Timestamp(latest_date)]
+        last_print = ev.groupby("ticker")["reaction_date"].max().dt.strftime("%Y-%m-%d").to_dict()
 
     df = latest.copy()
     # within sector percentile of the aligned z, per factor (red flag intensity)
@@ -238,6 +252,7 @@ def export_drilldown(panel: pd.DataFrame, latest: pd.DataFrame,
             "decile": _round(r.get(decile_col), 0),
             "prev_score": _round(pr.get(score_col)) if pr is not None else None,
             "prev_decile": _round(pr.get(decile_col), 0) if pr is not None else None,
+            "last_print": last_print.get(tk),
             "n_factors_used": int(r.get("n_factors_used") or 0),
             "fund_as_of": (pd.Timestamp(fund_as_of).date().isoformat()
                            if pd.notna(fund_as_of) else None) if "fund_as_of" in df.columns else None,
@@ -353,7 +368,7 @@ def export_meta(*, universe_size, n_sectors, horizon_q, source, learned_enabled,
         "panel_rows": int(panel_rows),
         "n_delisted_carried": int(n_delisted),
         "horizon_q": int(horizon_q),
-        "horizons_available": list(config.HORIZONS_Q),
+        "horizons_available": [sfx for sfx, _d, _m in config.TERM_STRUCTURE_HORIZONS],
         "benchmark": config.BENCHMARK_TICKER,
         "source": source,
         "cost_bps": cost_bps,
@@ -392,6 +407,8 @@ def export_all(*, panel, latest, score_col, decile_col, factor_ic, horizon_q,
                ic_summaries, decile_summaries, calibration, comparison, promotion,
                event_study, eras, era_ic, yearly_ic, family_roll=None, stress=None,
                term_structure=None, icw_weights=None, icw_paired=None,
+               factor_zoo=None, regime_ic=None, exposures=None,
+               earnings_events=None,
                backtests, seg_year, seg_regime, mc, exclusions,
                ov_active=None, ov_scoreboard=None, meta_kwargs=None) -> None:
     _ensure()
@@ -415,11 +432,13 @@ def export_all(*, panel, latest, score_col, decile_col, factor_ic, horizon_q,
                       promotion, event_study, eras, era_ic, yearly_ic,
                       family_roll=family_roll, stress=stress,
                       term_structure=term_structure,
-                      icw_weights=icw_weights, icw_paired=icw_paired)
+                      icw_weights=icw_weights, icw_paired=icw_paired,
+                      factor_zoo=factor_zoo, regime_ic=regime_ic,
+                      exposures=exposures)
     export_backtest(backtests, seg_year, seg_regime)
     export_mc(mc)
     export_exclusions(exclusions)
-    export_drilldown(panel, latest, score_col, decile_col)
+    export_drilldown(panel, latest, score_col, decile_col, earnings_events=earnings_events)
     export_transitions(panel, decile_col)
     export_overrides(ov_active, ov_scoreboard)
     export_meta(**meta_kwargs)

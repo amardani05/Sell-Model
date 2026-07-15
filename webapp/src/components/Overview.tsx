@@ -7,10 +7,10 @@ import { Ticker, UniverseToggle, inUniverse } from "./TickerFlag";
 import { ScoreRow } from "../lib/types";
 
 export function Overview({ meta, scores, validation, exclusions }: Bundle) {
-  const h = String(meta.horizon_q);
+  const h = `${meta.horizon_q}q`;
   const ic = validation.ic[h];
   const dec = validation.deciles[h];
-  const diag = meta.diagnostics;
+  const cal = validation.calibration ?? [];
   const fullEra = validation.era_ic?.find((e) => e.era === "full factor");
   const priceEra = validation.era_ic?.find((e) => e.era === "price only");
   const [universe, setUniverse] = useState<string>(meta.selection_index ?? "S&P 600");
@@ -80,20 +80,27 @@ export function Overview({ meta, scores, validation, exclusions }: Bundle) {
       )}
 
       <section className="card span-6">
-        <h3>Diagnostics gate</h3>
-        <p className="muted small">The four ways a return model can quietly lie, each checked on every run.</p>
-        <ul className="diag-list">
-          <DiagItem label={<><Term id="placebo">Placebo</Term> (shuffle collapses IC to near 0)</>} passed={diag.placebo.passed}
-            detail={`real ${fmtSigned(diag.placebo.real_ic)} vs placebo ${fmtSigned(diag.placebo.placebo_ic_mean)}`} />
-          <DiagItem label={<><Term id="lookahead">Look ahead</Term> (factors unchanged when future removed)</>} passed={diag.lookahead.passed}
-            detail={diag.lookahead.price_factor_truncation ? `${diag.lookahead.price_factor_truncation.checked} checks, ${diag.lookahead.price_factor_truncation.mismatches} mismatches` : "feature and label separation OK"} />
-          <DiagItem label={<><Term id="survivorship">Survivorship</Term> (<Term id="delistingaware">delisted carried</Term>)</>} passed={diag.survivorship.passed}
-            detail={`terminal return ${diag.survivorship.delisting_carried.terminal_return}, ${meta.n_delisted_carried} carried`} />
-          <DiagItem label={<>Data integrity (<Term id="splice">splice gate</Term>)</>} passed={true}
-            detail={`${exclusions?.n_labels_excluded ?? 0} labels excluded across ${exclusions?.n_tickers ?? 0} tickers`} />
-          <DiagItem label={<><Term id="pointintime">Point in time</Term> membership</>} passed={meta.membership_point_in_time}
-            detail={diag.survivorship.membership.note} soft />
-        </ul>
+        <h3><Term id="reliability">Reliability</Term>: P(underperform sector) by score bucket</h3>
+        <p className="muted small">
+          The score translated into the language a PM uses: for each bucket, how often names actually trailed
+          their sector median over the next {meta.horizon_q} quarter(s). 50% (dashed) is a coin flip; a working
+          model climbs to the right. Full detail, error bars, and the diagnostics gate live on the Validation tab.
+        </p>
+        {cal.length ? (
+          <Plot height={260}
+            data={[{
+              type: "scatter", mode: "lines+markers", name: "P(underperform)",
+              x: cal.map((c) => c.score_q),
+              y: cal.map((c) => c.p_underperform),
+              line: { color: "#b3001b", width: 2 }, marker: { size: 7 },
+              hovertemplate: "bucket %{x}: %{y:.1%}<extra></extra>",
+            }]}
+            layout={{
+              xaxis: { title: "score bucket (1 = best expected → 10 = worst)", dtick: 1 },
+              yaxis: { title: "P(underperform)", tickformat: ".0%" },
+              shapes: [{ type: "line", x0: 1, x1: 10, y0: 0.5, y1: 0.5, line: { color: "#888", dash: "dash", width: 1 } }],
+            }} />
+        ) : <p className="muted">No calibration data yet.</p>}
       </section>
 
       <section className="card span-6">
@@ -144,15 +151,5 @@ function KPI({ label, value, sub, good }: { label: ReactNode; value: string; sub
       <span className={"kpi-value" + (good === undefined ? "" : good ? " pos" : " neg")}>{value}</span>
       {sub && <span className="kpi-sub">{sub}</span>}
     </div>
-  );
-}
-
-function DiagItem({ label, passed, detail, soft }: { label: ReactNode; passed: boolean; detail: string; soft?: boolean }) {
-  return (
-    <li>
-      <span className={"badge " + (passed ? "ok" : soft ? "warn" : "fail")}>{passed ? "PASS" : soft ? "WARN" : "FAIL"}</span>
-      <span className="diag-label">{label}</span>
-      <span className="diag-detail muted">{detail}</span>
-    </li>
   );
 }

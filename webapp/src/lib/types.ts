@@ -13,7 +13,7 @@ export interface Meta {
   panel_rows: number;
   n_delisted_carried: number;
   horizon_q: number;
-  horizons_available: number[];
+  horizons_available: (string | number)[];
   benchmark: string;
   source: string;
   cost_bps: number;
@@ -121,7 +121,11 @@ export interface EventStudyRow {
 export interface EraRow { date: string; avg_factors: number; era: string; }
 export interface EraICRow { era: string; mean_ic: number | null; t_stat: number | null; ir: number | null; n_periods: number; }
 export interface YearlyICRow { year: number; mean_ic: number | null; n_periods: number; }
-export interface Promotion { mean_diff: number | null; t_stat: number | null; n_periods: number; promote: boolean; }
+export interface Promotion {
+  mean_diff: number | null; t_stat: number | null; n_periods: number; promote: boolean;
+  decision?: string; was_promoted?: boolean;
+  promotion_min_t?: number; demotion_min_t?: number;
+}
 
 export interface StressWindowRow {
   window: string; start: string; end: string;
@@ -158,6 +162,11 @@ export interface Validation {
   icw_weights?: ICWWeightRow[];
   icw_paired?: ICWPaired | null;
   icw_params?: { window: number; shrinkage: number; min_realized: number };
+  factor_zoo?: { n_draws: number; real_ic: number | null; null_mean: number | null;
+                 null_p95: number | null; p_value: number | null } | null;
+  ic_by_regime?: { regime: string; mean_ic: number | null; t_stat: number | null;
+                   n_periods: number; avg_bench_vol: number | null }[];
+  screen_exposures?: { metric: string; decile_10: number | null; universe: number | null }[];
   label_winsor_pct: number;
   era_min_avg_factors: number;
 }
@@ -205,6 +214,7 @@ export interface DrilldownFactor {
   prev_z: number | null;
 }
 export interface DrilldownName {
+  last_print?: string | null;
   sector: string;
   index_name: string;
   score: number | null;

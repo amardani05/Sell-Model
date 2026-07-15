@@ -122,14 +122,20 @@ class ICSummary:
 
 
 def summarize_ic(panel: pd.DataFrame, score_col: str, horizon_q: int) -> ICSummary:
-    ts = ic_time_series(panel, score_col, horizon_q)
+    return summarize_ic_for_label(panel, score_col, f"{horizon_q}q", 3 * horizon_q)
+
+
+def summarize_ic_for_label(panel: pd.DataFrame, score_col: str,
+                           suffix: str, months: int) -> ICSummary:
+    """summarize_ic for any label horizon suffix ("1m"/"1q"/"2q"/"4q")."""
+    ts = ic_series_for_label(panel, score_col, f"fwd_rel_ret_{suffix}")
     if ts.empty:
-        return ICSummary(horizon_q, score_col, np.nan, np.nan, np.nan, np.nan, 0, ts)
-    mean, t, ir = _hac_tstat(ts["ic"], lags=_nw_lags(horizon_q))
+        return ICSummary(months, score_col, np.nan, np.nan, np.nan, np.nan, 0, ts)
+    mean, t, ir = _hac_tstat(ts["ic"], lags=_nw_lags_months(months))
     hit = float((ts["ic"] > 0).mean())
-    logger.info("IC[%s h=%dq]: mean=%.4f t=%.2f IR=%.2f hit=%.0f%% over %d periods",
-                score_col, horizon_q, mean, t, ir, hit * 100, len(ts))
-    return ICSummary(horizon_q, score_col, mean, t, ir, hit, len(ts), ts)
+    logger.info("IC[%s h=%s]: mean=%.4f t=%.2f IR=%.2f hit=%.0f%% over %d periods",
+                score_col, suffix, mean, t, ir, hit * 100, len(ts))
+    return ICSummary(months, score_col, mean, t, ir, hit, len(ts), ts)
 
 
 # =============================================================================
@@ -147,7 +153,18 @@ class DecileSummary:
 
 
 def decile_analysis(panel: pd.DataFrame, decile_col: str, horizon_q: int) -> DecileSummary:
-    label = f"fwd_rel_ret_{horizon_q}q"
+    return decile_analysis_for_label(panel, decile_col, f"{horizon_q}q", 3 * horizon_q)
+
+
+def decile_analysis_for_label(panel: pd.DataFrame, decile_col: str,
+                              suffix: str, months: int) -> DecileSummary:
+    """decile_analysis for any label horizon suffix ("1m"/"1q"/"2q"/"4q")."""
+    label = f"fwd_rel_ret_{suffix}"
+    if label not in panel.columns:
+        empty = pd.DataFrame(columns=["decile", "mean_rel_ret", "median_rel_ret",
+                                      "mean_rel_ret_w", "n"])
+        return DecileSummary(months, decile_col, empty, np.nan, np.nan,
+                             pd.DataFrame(columns=["date", "spread"]), np.nan)
     d = panel[[decile_col, label, "date"]].dropna().copy()
     n = config.N_DECILES
 
@@ -169,16 +186,17 @@ def decile_analysis(panel: pd.DataFrame, decile_col: str, horizon_q: int) -> Dec
             rows.append({"date": pd.Timestamp(t), "spread": best - worst})
     spread_series = (pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
                      if rows else pd.DataFrame(columns=["date", "spread"]))
-    spread_mean, spread_t, _ = (_hac_tstat(spread_series["spread"], lags=_nw_lags(horizon_q))
+    spread_mean, spread_t, _ = (_hac_tstat(spread_series["spread"],
+                                           lags=_nw_lags_months(months))
                                 if not spread_series.empty else (np.nan, np.nan, np.nan))
 
     rho = np.nan
     if len(per) >= 3:
         rho, _ = spearmanr(per["decile"], per["mean_rel_ret"])
 
-    logger.info("Decile[%s h=%dq]: spread(best worst)=%.4f t=%.2f monotonicity rho=%.2f",
-                decile_col, horizon_q, spread_mean, spread_t, rho)
-    return DecileSummary(horizon_q, decile_col, per, spread_mean, spread_t, spread_series, float(rho))
+    logger.info("Decile[%s h=%s]: spread(best worst)=%.4f t=%.2f monotonicity rho=%.2f",
+                decile_col, suffix, spread_mean, spread_t, rho)
+    return DecileSummary(months, decile_col, per, spread_mean, spread_t, spread_series, float(rho))
 
 
 # =============================================================================
@@ -487,6 +505,129 @@ def horizon_term_structure(panel: pd.DataFrame) -> pd.DataFrame:
         logger.info("Horizon term structure: %d series x %d horizons measured",
                     out["series"].nunique(), n_h)
     return out
+
+
+def factor_zoo_null(panel: pd.DataFrame, score_col: str, horizon_q: int,
+                    n_draws: int = config.FACTOR_ZOO_DRAWS,
+                    seed: int = config.FACTOR_ZOO_SEED) -> dict:
+    """Multiple testing discipline (roadmap section 3; Harvey Liu Zhu 2016).
+
+    With 20+ factors, SOME composite always looks good; the honest question
+    is whether OUR model beats what random rummaging through the same zoo
+    produces. Each draw builds an equal weight composite from a random subset
+    (>= 3) of the direction aligned factor columns — sign consistent, so the
+    null respects the documented red flag directions and is therefore HARDER
+    to beat than white noise (the placebo covers that). Reports where the
+    real model's mean IC sits in that null distribution; a p value near 0.5
+    would mean the model is indistinguishable from factor mining.
+    """
+    rng = np.random.default_rng(seed)
+    cols = [f"{f}__n" for f in config.active_factors() if f"{f}__n" in panel.columns]
+    label = f"fwd_rel_ret_{horizon_q}q"
+    if len(cols) < 4 or label not in panel.columns:
+        return {"n_draws": 0, "real_ic": np.nan, "null_mean": np.nan,
+                "null_p95": np.nan, "p_value": np.nan}
+    real = summarize_ic(panel, score_col, horizon_q).mean_ic
+
+    base = panel[["date", label]].copy()
+    null_ics: list[float] = []
+    for _ in range(n_draws):
+        k = int(rng.integers(3, len(cols) + 1))
+        pick = list(rng.choice(cols, size=k, replace=False))
+        tmp = base.copy()
+        tmp["_z"] = panel[pick].mean(axis=1, skipna=True)
+        ics = []
+        for _t, g in tmp.groupby("date"):
+            d = g[["_z", label]].dropna()
+            if len(d) < config.MIN_NAMES_PER_SECTOR * 2:
+                continue
+            rho, _ = spearmanr(d["_z"], d[label])
+            if np.isfinite(rho):
+                ics.append(-float(rho))
+        if ics:
+            null_ics.append(float(np.mean(ics)))
+    arr = np.asarray(null_ics)
+    if not len(arr) or pd.isna(real):
+        return {"n_draws": int(len(arr)), "real_ic": real, "null_mean": np.nan,
+                "null_p95": np.nan, "p_value": np.nan}
+    out = {"n_draws": int(len(arr)), "real_ic": float(real),
+           "null_mean": float(arr.mean()), "null_p95": float(np.quantile(arr, 0.95)),
+           "p_value": float((arr >= real).mean())}
+    logger.info("Factor zoo null: real IC %.4f vs null mean %.4f (p95 %.4f) over %d "
+                "draws -> p=%.2f", out["real_ic"], out["null_mean"], out["null_p95"],
+                out["n_draws"], out["p_value"])
+    return out
+
+
+def ic_by_vol_regime(panel: pd.DataFrame, score_col: str, horizon_q: int,
+                     benchmark_px: pd.Series | None, window: int = 63) -> pd.DataFrame:
+    """IC split by the benchmark's trailing realized volatility tercile.
+
+    Regime conditioning, reporting only (roadmap section 3): the regime at
+    each scoring date uses TRAILING benchmark volatility, so it is knowable
+    at t; the tercile CUTS are full sample, which makes this a diagnostic
+    table, not a tradeable rule — the UI says so. Answers "when is the sell
+    signal trusted": a signal that only works in calm tape is a different
+    product from one that holds up when volatility is elevated.
+    """
+    if benchmark_px is None or not len(benchmark_px):
+        return pd.DataFrame(columns=["regime", "mean_ic", "t_stat", "n_periods",
+                                     "avg_bench_vol"])
+    ts = ic_time_series(panel, score_col, horizon_q)
+    if ts.empty:
+        return pd.DataFrame(columns=["regime", "mean_ic", "t_stat", "n_periods",
+                                     "avg_bench_vol"])
+    vol = benchmark_px.pct_change().rolling(window, min_periods=window).std() * np.sqrt(252)
+    ts = ts.copy()
+    ts["vol"] = vol.reindex(pd.to_datetime(ts["date"]), method="ffill").values
+    ts = ts.dropna(subset=["vol"])
+    if len(ts) < 12:
+        return pd.DataFrame(columns=["regime", "mean_ic", "t_stat", "n_periods",
+                                     "avg_bench_vol"])
+    ts["regime"] = pd.qcut(ts["vol"], 3, labels=["calm", "normal", "stressed"])
+    rows = []
+    for reg in ["calm", "normal", "stressed"]:
+        g = ts[ts["regime"] == reg]
+        if g.empty:
+            continue
+        mean, t, _ = _hac_tstat(g["ic"], lags=_nw_lags(horizon_q))
+        rows.append({"regime": reg, "mean_ic": mean, "t_stat": t,
+                     "n_periods": int(len(g)), "avg_bench_vol": float(g["vol"].mean())})
+    return pd.DataFrame(rows)
+
+
+def screen_exposures(panel_q: pd.DataFrame, decile_col: str) -> pd.DataFrame:
+    """Risk accounting lite (roadmap section 4): what does the sleeve tilt to?
+
+    Per quarter end, the flagged sleeve's (worst decile) mean characteristic
+    versus the whole selection universe, averaged across dates. A sell screen
+    that mostly flags high beta names is a beta bet wearing a factor costume;
+    this table says so out loud instead of leaving it to a risk model we do
+    not yet have.
+    """
+    d = panel_q.dropna(subset=[decile_col])
+    if d.empty:
+        return pd.DataFrame(columns=["metric", "decile_10", "universe"])
+    worst = d[d[decile_col] == config.N_DECILES]
+    rows = []
+    for col, label in [("beta_252d", "market beta (252d)"),
+                       ("ivol_63d", "idiosyncratic vol (63d)"),
+                       ("amihud_63d", "Amihud illiquidity (x1e9)"),
+                       ("short_vol_ratio", "short volume share (3m)")]:
+        if col not in d.columns or not d[col].notna().any():
+            continue
+        rows.append({"metric": label,
+                     "decile_10": float(worst.groupby("date")[col].mean().mean()),
+                     "universe": float(d.groupby("date")[col].mean().mean())})
+
+    def _max_share(g: pd.DataFrame) -> float:
+        c = g["gics_sector"].value_counts(normalize=True)
+        return float(c.iloc[0]) if len(c) else np.nan
+
+    rows.append({"metric": "largest sector share",
+                 "decile_10": float(worst.groupby("date").apply(_max_share).mean()),
+                 "universe": float(d.groupby("date").apply(_max_share).mean())})
+    return pd.DataFrame(rows)
 
 
 # =============================================================================

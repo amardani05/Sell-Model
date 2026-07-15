@@ -220,7 +220,7 @@ function DrillDownPanel({ ticker, d, bundle, onClose }: {
         {missing.length > 0 && (
           <p className="muted small">
             Not populated ({missing.length}): {missing.map((f) => factorLabel(f)).join(", ")}. These are dropped from this
-            name's average, never imputed. {d.fund_as_of ? `Fundamentals as of ${d.fund_as_of} (statement date + reporting lag).` : "No fundamental statement available for this name."}
+            name's average, never imputed. {d.fund_as_of ? `Fundamentals as of ${d.fund_as_of} (statement date + reporting lag).` : "No fundamental statement available for this name."}{d.last_print ? ` Last earnings print: ${d.last_print}.` : ""}
           </p>
         )}
         {d.fund_as_of && missing.length === 0 && (

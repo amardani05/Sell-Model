@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-14T21:28:37.334858Z",
+  "generated_at": "2026-07-15T14:17:21.984552Z",
   "model": "Relative Sell Model (sector neutral relative underperformance ranking)",
   "universe_size": 993,
   "n_sectors": 11,
@@ -12,8 +12,10 @@
   "n_delisted_carried": 0,
   "horizon_q": 1,
   "horizons_available": [
-    1,
-    2
+    "1m",
+    "1q",
+    "2q",
+    "4q"
   ],
   "benchmark": "IJR",
   "source": "edgar",
@@ -48,7 +50,7 @@
     "sue": "Estimates"
   },
   "learned_weights_enabled": true,
-  "default_score": "score_ew",
+  "default_score": "score_ml",
   "membership_point_in_time": false,
   "index_counts": {
     "S&P 600": 581,
@@ -57,16 +59,16 @@
   "use_estimate_factors": false,
   "diagnostics": {
     "placebo": {
-      "real_ic": 0.008003499766559438,
-      "real_t": 0.9097213598406061,
-      "placebo_ic_mean": 0.0012898547106730506,
-      "placebo_ic_std": 0.0032425756615248737,
+      "real_ic": 0.03345699495967493,
+      "real_t": 3.932348371623788,
+      "placebo_ic_mean": 9.22901595663211e-05,
+      "placebo_ic_std": 0.001607436074376076,
       "tolerance": 0.03,
       "passed": true
     },
     "lookahead": {
       "no_label_in_features": {
-        "n_features": 23,
+        "n_features": 26,
         "leak_columns": [],
         "passed": true
       },

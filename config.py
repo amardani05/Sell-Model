@@ -484,6 +484,45 @@ MC_SEED: int = 42
 # test, the side by side comparison, and this note ship with every run.
 PROMOTION_MIN_T: float = 1.645
 
+# Promotion HYSTERESIS (PM decision, Amar, 2026-07-14): once promoted at the
+# bar above, the learned model KEEPS the default until its paired edge over
+# the baseline actually disappears (paired t < DEMOTION_MIN_T), not when it
+# merely dips back under the promotion bar. Rationale, from the observed
+# flip: adding well signed factor families RAISES the baseline and
+# mechanically shrinks the paired edge, so a gate without hysteresis fires
+# exactly when the model improves (2026-07-14: learned IC +0.035 t 3.9 was
+# demoted at paired t +1.57 after the insider and earnings surprise families
+# lifted the baseline). The band [0, 1.645) is the hysteresis zone: inside
+# it an incumbent stays and a challenger waits. Which model holds the
+# default persists in data/promotion_state.json (synthetic runs never touch
+# it); every flip is logged, and the Methodology tab discloses the rule.
+DEMOTION_MIN_T: float = 0.0
+
+# Tier 2 interactions (roadmap section 3, built 2026-07-14): three pre
+# registered products of direction aligned FAMILY scores, fed to the LEARNED
+# model only. The equal weight composite, the IC weighted blend, the factor
+# IC table, and the drill down never see them (FACTOR_GROUPS does not list
+# them). Logic per the roadmap: value conditional on quality is the
+# Piotroski value trap guard (rich AND weak is worse than either alone),
+# momentum conditional on volatility separates steady losers from lottery
+# churn, and valuation conditional on accruals is distress x manipulation.
+# Products of aligned z scores light up joint extremes in BOTH corners; the
+# ridge holds the main effects too, so the interaction coefficient prices
+# only the joint surprise.
+INTERACTION_TERMS: list[tuple[str, str, str]] = [
+    ("ix_valuation_x_quality", "Valuation", "Quality"),
+    ("ix_momentum_x_volatility", "Momentum", "Volatility"),
+    ("ix_valuation_x_accruals", "Valuation", "Earnings Quality"),
+]
+
+# Factor zoo null distribution (roadmap section 3 multiple testing
+# discipline, Harvey Liu Zhu 2016): random sign consistent composites drawn
+# from the same direction aligned factor pool; the real model's mean IC is
+# reported as a percentile of that null. Draw count trades runtime for
+# resolution.
+FACTOR_ZOO_DRAWS: int = 100
+FACTOR_ZOO_SEED: int = 7
+
 # =============================================================================
 # Data fetch / cache knobs
 # =============================================================================
@@ -564,6 +603,7 @@ FINRA_SHORT_VOLUME_CACHE: Path = DATA_DIR / "finra_short_volume.parquet"
 INSIDER_CACHE: Path = DATA_DIR / "insider_transactions.parquet"
 INSIDER_QUARTERS_JSON: Path = DATA_DIR / "insider_quarters.json"
 EARNINGS_EVENTS_CACHE: Path = DATA_DIR / "edgar_earnings_events.parquet"
+PROMOTION_STATE_JSON: Path = DATA_DIR / "promotion_state.json"
 VOLUME_CACHE: Path = DATA_DIR / "volume_cache.parquet"
 BENCHMARK_CACHE: Path = DATA_DIR / "benchmark_cache.parquet"
 FUNDAMENTALS_CACHE: Path = DATA_DIR / "fundamentals_cache.parquet"

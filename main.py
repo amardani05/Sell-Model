@@ -22,6 +22,7 @@ CLI (flag names keep their hyphens; they are the interface):
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import time
 
@@ -30,6 +31,21 @@ import pandas as pd
 import config
 
 logger = logging.getLogger("rsm")
+
+
+def _load_promotion_state() -> dict:
+    """Which model holds the default (hysteresis incumbency); {} if none."""
+    try:
+        return json.loads(config.PROMOTION_STATE_JSON.read_text())
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _save_promotion_state(state: dict) -> None:
+    try:
+        config.PROMOTION_STATE_JSON.write_text(json.dumps(state, indent=1))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("promotion state not saved: %s", exc)
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -44,7 +60,7 @@ def _setup_logging(verbose: bool) -> None:
 # =============================================================================
 # Panel construction
 # =============================================================================
-def build_real_panel(args) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Series]:
+def build_real_panel(args) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Series, pd.DataFrame | None]:
     """Return (panel, prices, exclusions, benchmark_px) from live data."""
     from data_loader import (download_prices, download_benchmark, fetch_fundamentals,
                              load_short_interest, load_volumes)
@@ -149,14 +165,14 @@ def build_real_panel(args) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd
                                     benchmark_px=bench_px, fund_ts_override=fund_override,
                                     short_volume=short_volume, insider=insider,
                                     earnings_events=earnings_events)
-    return panel, prices, exclusions, bench_px
+    return panel, prices, exclusions, bench_px, earnings_events
 
 
-def build_synth_panel(args) -> tuple[pd.DataFrame, None, pd.DataFrame, pd.Series]:
+def build_synth_panel(args) -> tuple[pd.DataFrame, None, pd.DataFrame, pd.Series, None]:
     from diagnostics.synth import make_synthetic_panel
     logger.info("=== Synthetic panel (deterministic, no network) ===")
     empty_exclusions = pd.DataFrame(columns=["date", "ticker", "horizon_q", "reason", "value"])
-    return make_synthetic_panel(), None, empty_exclusions, pd.Series(dtype=float)
+    return make_synthetic_panel(), None, empty_exclusions, pd.Series(dtype=float), None
 
 
 # =============================================================================
@@ -168,12 +184,15 @@ def run(args) -> None:
     horizon = args.horizon_q
 
     from feature_engine import neutralize_factors, quarter_end_subset
-    from model import equal_weight_score, learned_weight_score, ic_weighted_score
-    from validate import (summarize_ic, decile_analysis, calibration_fm,
+    from model import (equal_weight_score, learned_weight_score, ic_weighted_score,
+                       add_interaction_features)
+    from validate import (summarize_ic_for_label, decile_analysis_for_label,
+                          calibration_fm,
                           decile_event_study, coverage_eras, ic_summary_by_era,
                           ic_by_year, paired_ic_test, factor_ic_table, compare_models,
                           family_ic_rolling, stress_window_table,
-                          horizon_term_structure)
+                          horizon_term_structure, factor_zoo_null,
+                          ic_by_vol_regime, screen_exposures)
     from backtest import (backtest_long_only_avoid_worst, backtest_hold_all,
                           benchmark_result, relative_metrics,
                           segment_by_year, segment_by_regime)
@@ -182,7 +201,7 @@ def run(args) -> None:
     import webapp_export
     from universe import has_real_membership
 
-    panel, prices, exclusions, bench_px = (build_synth_panel(args) if args.synthetic
+    panel, prices, exclusions, bench_px, earnings_events = (build_synth_panel(args) if args.synthetic
                                            else build_real_panel(args))
     if panel.empty:
         raise SystemExit("Panel is empty: check data sources / universe.")
@@ -199,12 +218,17 @@ def run(args) -> None:
     panel, icw_weights = ic_weighted_score(panel, horizon_q=horizon)
     if config.USE_LEARNED_WEIGHTS:
         logger.info("=== Learned weight model (walk forward, OOS) ===")
+        # Tier 2 interactions: pre registered family products, ridge only
+        panel = add_interaction_features(panel)
         panel = learned_weight_score(panel, horizon_q=horizon)
 
-    # Decide the default score HONESTLY: the equal weight baseline stays the
-    # default unless the learned model beats it out of sample by a PAIRED
-    # Newey West t test (a point estimate edge is noise, not a win). Judged on
-    # the SELECTION universe — the names IMA actually picks from.
+    # Decide the default score HONESTLY: promotion requires the learned model
+    # to beat the baseline out of sample by a PAIRED Newey West t test at
+    # config.PROMOTION_MIN_T. WITH HYSTERESIS (PM decision 2026-07-14): an
+    # incumbent learned default is only demoted when its paired edge actually
+    # disappears (t < config.DEMOTION_MIN_T) — see the config note. Judged on
+    # the SELECTION universe; the incumbent state persists across runs
+    # (synthetic runs never read or write it).
     sel_for_choice = (panel[panel["index_name"] == config.SELECTION_INDEX]
                       if "index_name" in panel.columns else panel)
     comparison = compare_models(sel_for_choice, horizon)
@@ -212,13 +236,31 @@ def run(args) -> None:
     promotion = None
     if config.USE_LEARNED_WEIGHTS and "score_ml" in panel.columns and panel["score_ml"].notna().any():
         promotion = paired_ic_test(sel_for_choice, "score_ml", "score_ew", horizon)
-        if promotion["promote"]:
-            score_col = "score_ml"
-            logger.info("Learned model PROMOTED (paired IC diff %+.4f, t=%+.2f >= %.1f)",
-                        promotion["mean_diff"], promotion["t_stat"], config.PROMOTION_MIN_T)
+        was_promoted = False
+        if not args.synthetic:
+            was_promoted = _load_promotion_state().get("promoted", False)
+        t = promotion["t_stat"]
+        if was_promoted:
+            keep = bool(pd.notna(t) and t >= config.DEMOTION_MIN_T)
+            decision = "retained (hysteresis)" if keep else "demoted"
         else:
-            logger.info("Learned model NOT promoted (paired IC diff %+.4f, t=%+.2f < %.1f): baseline stays default",
-                        promotion["mean_diff"], promotion["t_stat"], config.PROMOTION_MIN_T)
+            keep = bool(promotion["promote"])
+            decision = "promoted" if keep else "baseline kept"
+        promotion["promote"] = keep
+        promotion["decision"] = decision
+        promotion["was_promoted"] = was_promoted
+        promotion["promotion_min_t"] = config.PROMOTION_MIN_T
+        promotion["demotion_min_t"] = config.DEMOTION_MIN_T
+        if keep:
+            score_col = "score_ml"
+        logger.info("Learned model %s (paired IC diff %+.4f, t=%+.2f; bar %.3f, "
+                    "demotion floor %.1f, incumbent=%s)",
+                    decision.upper(), promotion["mean_diff"], t,
+                    config.PROMOTION_MIN_T, config.DEMOTION_MIN_T, was_promoted)
+        if not args.synthetic:
+            _save_promotion_state({"promoted": keep, "decision": decision,
+                                   "paired_t": None if pd.isna(t) else float(t),
+                                   "decided_on": str(pd.Timestamp(panel["date"].max()).date())})
     decile_col = "decile_ml" if score_col == "score_ml" else "decile_ew"
 
     # Roadmap 1.6 diagnostics: where does the transparent IC weighted blend
@@ -251,8 +293,13 @@ def run(args) -> None:
 
     # --- validate (on the selection universe, monthly grid) ---
     logger.info("=== Validation ===")
-    ic_summaries = {h: summarize_ic(sel, score_col, h) for h in config.HORIZONS_Q}
-    decile_summaries = {h: decile_analysis(sel, decile_col, h) for h in config.HORIZONS_Q}
+    # IC + decile blocks at every display horizon (1M/1Q/2Q/4Q toggle on the
+    # Validation tab); calibration, event study, and traded sleeves stay at
+    # the headline quarterly horizon.
+    ic_summaries = {sfx: summarize_ic_for_label(sel, score_col, sfx, months)
+                    for sfx, _days, months in config.TERM_STRUCTURE_HORIZONS}
+    decile_summaries = {sfx: decile_analysis_for_label(sel, decile_col, sfx, months)
+                        for sfx, _days, months in config.TERM_STRUCTURE_HORIZONS}
     factor_ic = factor_ic_table(sel, horizon)
     calibration = calibration_fm(sel, score_col, horizon)
     event_study = decile_event_study(quarter_end_subset(sel), decile_col)
@@ -264,6 +311,12 @@ def run(args) -> None:
                                  benchmark_px=bench_px)
     # roadmap 1.5: per family IC at 1M/1Q/2Q/4Q — the IC decay curves
     term_structure = horizon_term_structure(sel)
+    # roadmap section 3: multiple testing null + regime conditioned IC
+    logger.info("=== Factor zoo null distribution (%d draws) ===", config.FACTOR_ZOO_DRAWS)
+    zoo = factor_zoo_null(sel, score_col, horizon)
+    regime_ic = ic_by_vol_regime(sel, score_col, horizon, bench_px)
+    # roadmap section 4: risk accounting lite for the flagged sleeve
+    exposures = screen_exposures(sel_q, decile_col)
 
     # --- backtest (quarter end subset of the selection universe) ---
     logger.info("=== Backtest ===")
@@ -306,6 +359,8 @@ def run(args) -> None:
             event_study=event_study, eras=eras, era_ic=era_ic, yearly_ic=yearly_ic,
             family_roll=family_roll, stress=stress, term_structure=term_structure,
             icw_weights=icw_weights, icw_paired=icw_paired,
+            factor_zoo=zoo, regime_ic=regime_ic, exposures=exposures,
+            earnings_events=earnings_events,
             backtests={"hold_all": hold_all, "avoid_worst": avoid, "benchmark": bench},
             seg_year=seg_year, seg_regime=seg_regime, mc=mc, exclusions=exclusions,
             ov_active=ov_active, ov_scoreboard=ov_scoreboard,
@@ -333,7 +388,8 @@ def run(args) -> None:
     _print_summary(panel, score_col, decile_col, latest, latest_date, ic_summaries,
                    decile_summaries, comparison, era_ic, hold_all, avoid, bench, mc,
                    exclusions, diag, horizon, time.time() - t0,
-                   term_structure=term_structure, icw_paired=icw_paired)
+                   term_structure=term_structure, icw_paired=icw_paired,
+                   promotion=promotion, zoo=zoo, regime_ic=regime_ic)
 
 
 # =============================================================================
@@ -342,7 +398,7 @@ def run(args) -> None:
 def _print_summary(panel, score_col, decile_col, latest, latest_date, ic_summaries,
                    decile_summaries, comparison, era_ic, hold_all, avoid, bench, mc,
                    exclusions, diag, horizon, secs, term_structure=None,
-                   icw_paired=None) -> None:
+                   icw_paired=None, promotion=None, zoo=None, regime_ic=None) -> None:
     line = "=" * 76
     print(f"\n{line}\nRELATIVE SELL MODEL: sector neutral relative underperformance ranking")
     print(f"{line}")
@@ -354,14 +410,14 @@ def _print_summary(panel, score_col, decile_col, latest, latest_date, ic_summari
               f"({exclusions['ticker'].nunique()} tickers; splice/extreme gate)")
     print()
 
-    s = ic_summaries[horizon]
+    s = ic_summaries[f"{horizon}q"]
     print(f"VALIDATION  (sector neutral IC, Fama MacBeth + Newey West h-1 lag)")
     print(f"  mean IC = {s.mean_ic:+.4f}   t = {s.t_stat:+.2f}   IR = {s.ir:+.2f}   "
           f"hit = {s.hit_rate*100:.0f}%   over {s.n_periods} periods")
     if era_ic is not None and not era_ic.empty:
         for _, r in era_ic.iterrows():
             print(f"    {r['era']:<14} IC={r['mean_ic']:+.4f} t={r['t_stat']:+.2f} over {r['n_periods']} qtrs")
-    d = decile_summaries[horizon]
+    d = decile_summaries[f"{horizon}q"]
     print(f"  decile spread (best worst) = {d.spread_mean:+.4f}  t = {d.spread_tstat:+.2f}  "
           f"monotonicity rho = {d.monotonicity_rho:+.2f}")
     if not comparison.empty:
@@ -375,6 +431,17 @@ def _print_summary(panel, score_col, decile_col, latest, latest_date, ic_summari
             print(f"  paired: ic_weighted vs equal_weight  diff={a['mean_diff']:+.4f} t={a['t_stat']:+.2f}")
         if b:
             print(f"  paired: learned vs ic_weighted       diff={b['mean_diff']:+.4f} t={b['t_stat']:+.2f}")
+    if promotion:
+        print(f"  default decision: {promotion.get('decision', '?')} "
+              f"(paired t={promotion['t_stat']:+.2f}; promote at >= {promotion.get('promotion_min_t', 1.645):.3f}, "
+              f"demote below {promotion.get('demotion_min_t', 0.0):.1f}; incumbent={promotion.get('was_promoted')})")
+    if zoo and zoo.get("n_draws"):
+        print(f"  factor zoo null: real IC {zoo['real_ic']:+.4f} vs null mean {zoo['null_mean']:+.4f} "
+              f"(p95 {zoo['null_p95']:+.4f}) over {zoo['n_draws']} draws -> p={zoo['p_value']:.2f}")
+    if regime_ic is not None and not regime_ic.empty:
+        cells = "  ".join(f"{r['regime']}: {r['mean_ic']:+.3f} (t{r['t_stat']:+.1f})"
+                          for _, r in regime_ic.iterrows())
+        print(f"  IC by volatility regime: {cells}")
 
     if term_structure is not None and not term_structure.empty:
         present = set(term_structure["horizon"])

@@ -122,7 +122,12 @@ export function MethodologyView({ meta }: Bundle) {
             opposite signs (valuation flags work, quality flags inverted), which an equal weight sum cancels
             and a fit can learn. It becomes the default scorer only if it <strong>beats the baseline
             <Term id="oos"> out of sample</Term></strong> on a paired per date IC t test at a one sided 5% bar
-            (t ≥ 1.645; the hypothesis is directional and tested walk forward). Current default:
+            (t ≥ 1.645; the hypothesis is directional and tested walk forward), <strong>with
+            hysteresis</strong>: once promoted, it keeps the default until its paired edge actually
+            disappears (t below zero). Rationale: adding well signed factors raises the baseline and
+            mechanically shrinks the paired edge, so a gate without hysteresis demotes the stronger model
+            exactly when the ingredients improve (observed 2026 07 14 and adopted by PM decision that day,
+            with the same disclosure discipline as the bar change below). Current default:
             <code> {meta.default_score}</code>. Fitted then ignored weights are never presented.</li>
         </ol>
         <p className="callout warn">
@@ -266,6 +271,11 @@ export function MethodologyView({ meta }: Bundle) {
 
         <h3>Methodology limitations (honest)</h3>
         <ul>
+          <li><strong>No portfolio level risk model.</strong> The risk accounting table on the Validation tab
+            reports what the flagged sleeve tilts toward (beta, idiosyncratic vol, liquidity, sector
+            concentration), but there is no factor exposure accounting at portfolio construction. Fine at
+            IMA's ~20 name scale; required before anyone sizes positions off this model. Capacity is likewise
+            a non issue at student fund size and untested beyond it.</li>
           <li><strong>EDGAR fundamentals reach back to ~2009 to 2012, not further.</strong> Pre XBRL cross sections
             carry price factors only; some filers tag line items idiosyncratically (the alias map is maintained,
             not perfect); and names without a CIK fall back to shallow yfinance statements. The coverage era

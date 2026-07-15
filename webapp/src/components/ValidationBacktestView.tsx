@@ -10,8 +10,9 @@ const TIER_COLORS: Record<string, string> = {
 };
 
 export function ValidationBacktestView({ meta, validation, backtest, mcSim, exclusions, overrides }: Bundle) {
+  // Horizon keys are label suffixes ("1m"/"1q"/"2q"/"4q"); headline is quarterly.
   const horizons = meta.horizons_available.map(String);
-  const [h, setH] = useState<string>(String(meta.horizon_q));
+  const [h, setH] = useState<string>(`${meta.horizon_q}q`);
   const ic = validation.ic[h];
   const dec = validation.deciles[h];
   const cal = validation.calibration ?? [];
@@ -61,7 +62,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
             <span className="muted small"><Term id="horizon">Forward horizon</Term></span>
             <span className="seg">
               {horizons.map((hh) => (
-                <button key={hh} className={h === hh ? "active" : ""} onClick={() => setH(hh)}>{hh}Q</button>
+                <button key={hh} className={h === hh ? "active" : ""} onClick={() => setH(hh)}>{hh.toUpperCase()}</button>
               ))}
             </span>
           </span>
@@ -76,7 +77,7 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
           IC is averaged <Term id="famamacbeth">Fama MacBeth</Term> style with a <Term id="neweywest">Newey
           West</Term> <Term id="tstat">t statistic</Term> whose lags scale with the label overlap.
           <Term id="walkforward"> Walk forward</Term> only: features at t use data on or before t, labels use
-          returns in the window after t out to t plus {h} quarters.
+          returns in the window after t out to the {h.toUpperCase()} horizon.
         </p>
         <div className="metric-row">
           <Metric label={<>Mean <Term id="ic">IC</Term></>} value={fmtSigned(ic?.mean_ic)} good={(ic?.mean_ic ?? 0) > 0} />
@@ -154,6 +155,61 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
             layout={{ yaxis: { title: "mean IC", zeroline: true } }} />
         ) : <Empty />}
         <p className="muted small">Independent windows: a mean carried by one lucky year shows up here immediately.</p>
+      </section>
+
+      {/* ================= CALIBRATION ================= */}
+      <section className="card span-6">
+        <h3><Term id="calibration">Calibration</Term>: return by score bucket</h3>
+        <p className="muted small">
+          Buckets are cut <strong>within each quarter</strong>, then averaged across quarters
+          (<Term id="famamacbeth">Fama MacBeth</Term>). Error bars are ±2 <Term id="standarderror">standard
+          errors</Term>. The <Term id="winsorizedmean">winsorized mean</Term> and median are the skew robust
+          reads: relative returns have a long right tail, so a plain mean can be carried by a few lottery
+          quarters. A working model steps downward left to right.
+        </p>
+        {cal.length ? (
+          <Plot height={320}
+            data={[
+              { type: "scatter", mode: "markers", name: "mean ±2SE",
+                x: cal.map((c) => c.score_q), y: cal.map((c) => c.mean_rel_ret),
+                error_y: { type: "data", array: cal.map((c) => 2 * (c.se ?? 0)), visible: true, color: "#98a7b8" },
+                marker: { size: 9, color: "#34516b" } },
+              { type: "scatter", mode: "lines+markers", name: "winsorized mean",
+                x: cal.map((c) => c.score_q), y: cal.map((c) => c.mean_rel_ret_w),
+                line: { color: "#1d62a8", width: 2 }, marker: { size: 5 } },
+              { type: "scatter", mode: "lines+markers", name: "median",
+                x: cal.map((c) => c.score_q), y: cal.map((c) => c.median_rel_ret),
+                line: { color: "#c98a00", width: 2, dash: "dot" }, marker: { size: 5 } },
+            ]}
+            layout={{ xaxis: { title: "score bucket (1 = best expected → 10 = worst)", dtick: 1 },
+                      yaxis: { title: "fwd relative return", zeroline: true } }} />
+        ) : <Empty />}
+      </section>
+
+      <section className="card span-6">
+        <h3><Term id="reliability">Reliability</Term>: P(underperform sector) by bucket</h3>
+        <p className="muted small">
+          The probability view: for each score bucket, how often did names actually trail their sector median
+          over the next {meta.horizon_q} quarter(s)? 50% (dashed) is a coin flip because the target is relative to the
+          median. A useful sell model pushes the right hand buckets meaningfully above 50%. This chart is the
+          honest translation of the score into the language a PM uses.
+        </p>
+        {cal.length ? (
+          <Plot height={320}
+            data={[{
+              type: "scatter", mode: "lines+markers", name: "P(underperform) ±2SE",
+              x: cal.map((c) => c.score_q),
+              y: cal.map((c) => c.p_underperform),
+              error_y: { type: "data", array: cal.map((c) => 2 * (c.p_underperform_se ?? 0)), visible: true, color: "#d6a5ab" },
+              line: { color: "#b3001b", width: 2 }, marker: { size: 7 },
+              hovertemplate: "bucket %{x}: %{y:.1%}<extra></extra>",
+            }]}
+            layout={{
+              xaxis: { title: "score bucket (1 = best expected → 10 = worst)", dtick: 1 },
+              yaxis: { title: "P(underperform sector median)", tickformat: ".0%" },
+              shapes: [{ type: "line", x0: 1, x1: 10, y0: 0.5, y1: 0.5, line: { color: "#888", dash: "dash", width: 1 } }],
+            }} />
+        ) : <Empty />}
       </section>
 
       {/* ================= WHAT BROKE, AND WHEN ================= */}
@@ -277,61 +333,6 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
         </p>
       </section>
 
-      {/* ================= CALIBRATION ================= */}
-      <section className="card span-6">
-        <h3><Term id="calibration">Calibration</Term>: return by score bucket</h3>
-        <p className="muted small">
-          Buckets are cut <strong>within each quarter</strong>, then averaged across quarters
-          (<Term id="famamacbeth">Fama MacBeth</Term>). Error bars are ±2 <Term id="standarderror">standard
-          errors</Term>. The <Term id="winsorizedmean">winsorized mean</Term> and median are the skew robust
-          reads: relative returns have a long right tail, so a plain mean can be carried by a few lottery
-          quarters. A working model steps downward left to right.
-        </p>
-        {cal.length ? (
-          <Plot height={320}
-            data={[
-              { type: "scatter", mode: "markers", name: "mean ±2SE",
-                x: cal.map((c) => c.score_q), y: cal.map((c) => c.mean_rel_ret),
-                error_y: { type: "data", array: cal.map((c) => 2 * (c.se ?? 0)), visible: true, color: "#98a7b8" },
-                marker: { size: 9, color: "#34516b" } },
-              { type: "scatter", mode: "lines+markers", name: "winsorized mean",
-                x: cal.map((c) => c.score_q), y: cal.map((c) => c.mean_rel_ret_w),
-                line: { color: "#1d62a8", width: 2 }, marker: { size: 5 } },
-              { type: "scatter", mode: "lines+markers", name: "median",
-                x: cal.map((c) => c.score_q), y: cal.map((c) => c.median_rel_ret),
-                line: { color: "#c98a00", width: 2, dash: "dot" }, marker: { size: 5 } },
-            ]}
-            layout={{ xaxis: { title: "score bucket (1 = best expected → 10 = worst)", dtick: 1 },
-                      yaxis: { title: "fwd relative return", zeroline: true } }} />
-        ) : <Empty />}
-      </section>
-
-      <section className="card span-6">
-        <h3><Term id="reliability">Reliability</Term>: P(underperform sector) by bucket</h3>
-        <p className="muted small">
-          The probability view: for each score bucket, how often did names actually trail their sector median
-          over the next {h} quarter(s)? 50% (dashed) is a coin flip because the target is relative to the
-          median. A useful sell model pushes the right hand buckets meaningfully above 50%. This chart is the
-          honest translation of the score into the language a PM uses.
-        </p>
-        {cal.length ? (
-          <Plot height={320}
-            data={[{
-              type: "scatter", mode: "lines+markers", name: "P(underperform) ±2SE",
-              x: cal.map((c) => c.score_q),
-              y: cal.map((c) => c.p_underperform),
-              error_y: { type: "data", array: cal.map((c) => 2 * (c.p_underperform_se ?? 0)), visible: true, color: "#d6a5ab" },
-              line: { color: "#b3001b", width: 2 }, marker: { size: 7 },
-              hovertemplate: "bucket %{x}: %{y:.1%}<extra></extra>",
-            }]}
-            layout={{
-              xaxis: { title: "score bucket (1 = best expected → 10 = worst)", dtick: 1 },
-              yaxis: { title: "P(underperform sector median)", tickformat: ".0%" },
-              shapes: [{ type: "line", x0: 1, x1: 10, y0: 0.5, y1: 0.5, line: { color: "#888", dash: "dash", width: 1 } }],
-            }} />
-        ) : <Empty />}
-      </section>
-
       {/* ================= EVENT STUDY + DECILES ================= */}
       <section className="card span-7">
         <h3><Term id="eventstudy">Event study</Term>: what happens after a name is flagged</h3>
@@ -411,14 +412,27 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
           ]}
         />
         <p className="small muted">
-          Default scorer = <code>{meta.default_score}</code>. Promotion now requires a <strong>paired</strong>
-          {" "}<Term id="tstat">t test</Term> on the per date IC difference
+          Default scorer = <code>{meta.default_score}</code>. Promotion requires a <strong>paired</strong>
+          {" "}<Term id="tstat">t test</Term> on the per date IC difference at t ≥ 1.645, <strong>with
+          hysteresis</strong>: once promoted, the learned model keeps the default until its paired edge
+          actually disappears (t below zero), because adding well signed factors raises the baseline and
+          mechanically shrinks the measured edge (PM decision, disclosed like the promotion bar itself)
           {validation.promotion
             ? <>. This run: diff {fmtSigned(validation.promotion.mean_diff, 4)}, t = {fmt(validation.promotion.t_stat)}
-                over {validation.promotion.n_periods} dates → <strong>{validation.promotion.promote ? "promoted" : "baseline kept"}</strong>.</>
+                over {validation.promotion.n_periods} dates → <strong>{validation.promotion.decision ?? (validation.promotion.promote ? "promoted" : "baseline kept")}</strong>.</>
             : <> (learned model not fitted this run).</>}
           {" "}A point estimate edge is noise, not a win.
         </p>
+        {validation.factor_zoo && validation.factor_zoo.n_draws > 0 && (
+          <p className="small muted">
+            <strong>Factor zoo null</strong> (multiple testing discipline, Harvey, Liu and Zhu 2016): across
+            {" "}{validation.factor_zoo.n_draws} random sign consistent composites from the same factor pool,
+            the null mean IC is {fmtSigned(validation.factor_zoo.null_mean, 4)} (95th percentile
+            {" "}{fmtSigned(validation.factor_zoo.null_p95, 4)}); the default scorer's
+            {" "}{fmtSigned(validation.factor_zoo.real_ic, 4)} sits at p = {fmt(validation.factor_zoo.p_value)}.
+            Near 0.5 would mean the model is indistinguishable from factor mining.
+          </p>
+        )}
       </section>
 
       <section className="card span-6">
@@ -507,6 +521,50 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
           history, expect quality and accruals there, and valuation above the line, matching the term
           structure verdict). Weights move slowly because the window is three years of realized labels.
         </p>
+      </section>
+
+      {/* ================= RISK ACCOUNTING + REGIMES ================= */}
+      <section className="card span-7">
+        <h3>Risk accounting lite: what does the flagged sleeve tilt toward?</h3>
+        <p className="muted small">
+          Average characteristic of the worst decile versus the whole selection universe, per quarter end,
+          averaged over the sample. A sell screen that mostly flags high beta names is a beta bet wearing a
+          factor costume; this table says so out loud. A full risk model (size, industry, factor exposures at
+          the portfolio level) remains future work and is listed in the Methodology limitations.
+        </p>
+        {validation.screen_exposures?.length ? (
+          <DataTable
+            rows={validation.screen_exposures}
+            rowKey={(r) => r.metric}
+            columns={[
+              { key: "metric", label: "Characteristic" },
+              { key: "decile_10", label: "Decile 10", align: "right", render: (r) => fmt(r.decile_10, 3) },
+              { key: "universe", label: "Universe", align: "right", render: (r) => fmt(r.universe, 3) },
+            ]}
+          />
+        ) : <Empty />}
+      </section>
+
+      <section className="card span-5">
+        <h3>When is the signal trusted? IC by volatility regime</h3>
+        <p className="muted small">
+          The IC series split by the benchmark's trailing 63 day realized volatility at each scoring date
+          (knowable at t; the tercile cuts are full sample, so read this as a diagnostic, not a tradeable
+          rule).
+        </p>
+        {validation.ic_by_regime?.length ? (
+          <DataTable
+            rows={validation.ic_by_regime}
+            rowKey={(r) => r.regime}
+            columns={[
+              { key: "regime", label: "Regime" },
+              { key: "avg_bench_vol", label: "Avg vol", align: "right", render: (r) => r.avg_bench_vol != null ? `${Math.round(r.avg_bench_vol * 100)}%` : "—" },
+              { key: "mean_ic", label: "Mean IC", align: "right", render: (r) => fmtSigned(r.mean_ic, 3) },
+              { key: "t_stat", label: "t", align: "right", render: (r) => fmt(r.t_stat, 1) },
+              { key: "n_periods", label: "Obs", align: "right" },
+            ]}
+          />
+        ) : <Empty />}
       </section>
 
       {/* ================= OVERRIDE SCOREBOARD ================= */}

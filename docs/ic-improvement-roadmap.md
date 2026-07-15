@@ -53,6 +53,30 @@ the account unblocks; (c) Norgate ~$40/mo. Recommendation: (b) if WRDS
 unblocks soon, else (a) as its own session; the survivorship banner stays up
 honestly until then.
 
+**SECTIONS 3 + 4 BUILT, HYSTERESIS ADOPTED (2026-07-15, PM directed):**
+(a) **Hysteresis on promotion** (`DEMOTION_MIN_T = 0`, state in
+data/promotion_state.json): once promoted at 1.645, the learned model keeps
+the default until its paired edge disappears (t < 0). Result: score_ml is
+the default again; this run's paired t = +1.74 clears even the plain bar.
+(b) **Tier 2 interactions**: three pre-registered family-score products
+(value x quality, momentum x volatility, value x accruals) fed to the ridge
+only — learned IC improved +0.035 -> **+0.038 (t 4.2)**, +0.052 (t 3.5) at
+4Q. (c) **Factor-zoo null** (Harvey-Liu-Zhu discipline): 100 random
+sign-consistent composites from the same pool have null mean IC +0.002
+(p95 +0.012); the real model's +0.038 sits at p = 0.00 — not factor mining.
+(d) **Regime-conditioned IC**: calm +0.016 (t 1.5), normal +0.036 (t 2.6),
+stressed +0.061 (t 3.3) — the signal is strongest in stressed tape, the
+right tail for a sell model (diagnostic split, cuts are full-sample).
+(e) **Risk accounting lite**: decile 10 is NOT a beta bet (0.97 vs 1.00) —
+its tilt is illiquidity (Amihud ~3x universe) and heavier shorting flow;
+shipped as a Validation-tab table. (f) **Event awareness**: drill down now
+shows each name's last earnings print date. (g) 1M/4Q added to the
+validation horizon toggle; calibration + reliability moved up; Overview
+shows the reliability curve instead of the diagnostics gate. (h) **2.6
+dropped entirely per PM** (was already closed as infeasible on the free
+path). Remaining ideas from section 3 not yet built: GBM with monotonicity
+constraints, deflated Sharpe. Estimates (section 4.2) remain the known gap.
+
 **PROMOTION FLIP (2026-07-14, consequence of 2.4/2.5):** the two new well
 signed families lifted the equal weight baseline from ≈0 to IC +0.0105
 (t 1.2) — and the ridge's paired edge over it fell to t = +1.57 < 1.645, so
