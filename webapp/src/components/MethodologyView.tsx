@@ -1,5 +1,6 @@
 import { Bundle } from "../lib/data";
 import { Term } from "./Term";
+import { Formula } from "./Formula";
 
 const DIRECTION_NOTE: Record<string, string> = {
   Valuation: "rich means red flag (the value premium)",
@@ -131,12 +132,15 @@ export function MethodologyView({ meta }: Bundle) {
             richer than its average peer. Before computing this, the wildest 2% of values on each side are
             clipped in ("winsorized") so one broken or freak number cannot distort the sector's average and
             standard deviation. This repeats for all {meta.n_factors} factors, every stock, every month.
+            In symbols, for stock i, factor f, sector s, date t:
+            <Formula block tex={String.raw`z_{i,f,t} = \frac{x_{i,f,t} - \mu_{f,s,t}}{\sigma_{f,s,t}} \qquad \text{ACME: } z = \frac{25 - 20}{5} = +1.0`} />
           </li>
           <li>
             <strong>Point every signal the same way.</strong> Each z score is multiplied by +1 or −1 so that
             after alignment, a BIGGER number always means MORE expected underperformance. High P/E is already
             a red flag, so it keeps its sign; high profitability is good, so its z is flipped. Only after
             this step does averaging signals make sense.
+            <Formula block tex={String.raw`\tilde{z}_{i,f,t} = d_f \cdot z_{i,f,t}, \qquad d_f \in \{+1, -1\}`} />
           </li>
           <li>
             <strong>One vote per family, not per factor.</strong> The four valuation ratios are near copies
@@ -144,7 +148,8 @@ export function MethodologyView({ meta }: Bundle) {
             within their family (Valuation, Momentum, Volatility, Quality, Investment, Earnings Quality,
             Short Activity, Insider Activity, Earnings Surprise), and the families are then combined. A stock
             must have at least 3 factors across at least 2 families or it is not scored at all; missing data
-            is never guessed.
+            is never guessed. Family score, then the equal weight composite:
+            <Formula block tex={String.raw`F_{i,g,t} = \underset{f \in g}{\text{mean}}\, \tilde{z}_{i,f,t} \qquad S^{EW}_{i,t} = \underset{g}{\text{mean}}\, F_{i,g,t}`} />
           </li>
           <li>
             <strong>Weight the families.</strong> The simple baseline gives every family an equal vote. The
@@ -154,7 +159,11 @@ export function MethodologyView({ meta }: Bundle) {
             documented red flag has been paying the wrong way in this market. It holds the default only
             because it beat the equal weight baseline <Term id="oos">out of sample</Term> under the
             pre registered promotion rule; its full evidence file, including its refit by refit weights and
-            the overfit checks, lives on the Validation tab.
+            the overfit checks, lives on the Validation tab. The fit solves, at every date t using only
+            earlier cross sections u:
+            <Formula block tex={String.raw`\hat{w}_t = \arg\min_{w} \sum_{u < t} \big(r^{rel}_{u} - X_{u} w\big)^2 + \alpha \lVert w \rVert^2, \qquad \alpha = 10`} />
+            and the score negates the predicted relative return, so higher still means more sell risk:
+            <Formula block tex={String.raw`S^{ML}_{i,t} = -\, X_{i,t} \hat{w}_t`} />
           </li>
           <li>
             <strong>Cut the deciles.</strong> ACME's final score is standardized once more within its peer
@@ -164,7 +173,9 @@ export function MethodologyView({ meta }: Bundle) {
             tenth that looks worst: the sell sleeve. Because the cut happens inside each sector, decile 10
             always contains roughly the worst tenth of EVERY sector; the model cannot dump an entire cheap
             industry into it. If ACME's aligned score puts it in the riskiest tenth of Industrials that
-            month, ACME is a decile 10 name regardless of how any other sector looks.
+            month, ACME is a decile 10 name regardless of how any other sector looks. With rank% the within
+            sector percentile rank of the score (0 to 1):
+            <Formula block tex={String.raw`D_{i,t} = \Big\lceil 10 \cdot \text{rank\%}\big(S_{i,t}\big) \Big\rceil`} />
           </li>
           <li>
             <strong>Grade it later.</strong> The score's job is to predict the
@@ -173,7 +184,9 @@ export function MethodologyView({ meta }: Bundle) {
             the same window. If ACME returns +4% while the median Industrial returns +10%, ACME
             underperformed by 6 points even though it went up. A name that stops trading is graded at −100%
             rather than dropped, so failures cannot vanish from the record. Every validation chart is this
-            grading, done out of sample, across ~200 monthly cross sections since 2010.
+            grading, done out of sample, across ~200 monthly cross sections since 2010. With h the horizon
+            and s(i) the stock's sector peers:
+            <Formula block tex={String.raw`r^{rel}_{i,t} = r_{i,(t,\,t+h]} - \underset{j \in s(i)}{\text{median}}\; r_{j,(t,\,t+h]}`} />
           </li>
         </ol>
 
@@ -292,7 +305,8 @@ export function MethodologyView({ meta }: Bundle) {
             average is converted into a 0 to 100 universe <Term id="percentile">percentile</Term>: torpedo 88
             means ACME screens riskier than 88% of every stock in the universe that day. The percentile maps
             to a plain language <Term id="tier">tier</Term>: 0 to 30 Stable, 30 to 70 Mainstream, 70 to 100
-            Elevated.
+            Elevated. In symbols, with z scores taken against the whole universe u rather than the sector:
+            <Formula block tex={String.raw`T_{i,t} = \underset{f}{\text{mean}}\, \tilde{z}^{\,univ}_{i,f,t} \qquad P_{i,t} = 100 \cdot \text{rank\%}\big(T_{i,t}\big)`} />
           </li>
         </ol>
         <p>
@@ -335,7 +349,9 @@ export function MethodologyView({ meta }: Bundle) {
             <Term id="spearman"> Spearman correlation</Term> between score and forward relative return per cross
             section, averaged <Term id="famamacbeth">Fama MacBeth</Term> with a <Term id="neweywest">Newey
             West</Term> <Term id="tstat">t statistic</Term> whose lag count scales with the label overlap
-            (horizon − 1 quarters, floored at one). Mean IC, t, <Term id="ir">IR</Term>, the IC time series,
+            (horizon − 1 quarters, floored at one). In symbols, per cross section t and pooled:
+            <Formula block tex={String.raw`IC_t = -\rho^{\,Spearman}\big(S_t,\, r^{rel}_t\big) \qquad \overline{IC} = \tfrac{1}{T} \textstyle\sum_t IC_t`} />
+            Mean IC, t, <Term id="ir">IR</Term>, the IC time series,
             an IC by year split, and the per era split are all reported.</li>
           <li><strong><Term id="calibration">Calibration</Term>, the Fama MacBeth way</strong>: score buckets are
             cut <em>within each quarter</em>, per bucket outcomes averaged across quarters with
