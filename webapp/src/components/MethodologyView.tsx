@@ -62,6 +62,121 @@ export function MethodologyView({ meta }: Bundle) {
           views can be read side by side. See the Torpedo Screener tab and the relative versus absolute scatter.
         </p>
 
+        <h3>Read this first: five ideas carry everything below</h3>
+        <div className="help-note">
+          <p>
+            <strong>1. Average versus median.</strong> The average adds everything up and divides; the
+            <strong> median</strong> is the middle value once everything is sorted. Small cap returns have a
+            long right tail (occasional 10x moonshots), and a single moonshot can drag an average far away
+            from what the typical stock did. That is why this model grades stocks against their sector's
+            median, and why charts here often show medians next to means.
+          </p>
+          <p>
+            <strong>2. Standard deviation.</strong> The typical gap between individual values and their group
+            average, in the same units as the data. If sector P/E ratios average 20 with a standard deviation
+            of 5, then a P/E of 25 is one typical gap above average (ordinary), while a P/E of 35 is three
+            gaps above (genuinely unusual).
+          </p>
+          <p>
+            <strong>3. The <Term id="zscore">z score</Term>.</strong> One number that answers "how unusual is
+            this value among its peers": the value, minus the peer average, divided by the peer standard
+            deviation. A z of 0 is perfectly typical, +1 is notable, +2 is unusual, and the sign tells the
+            direction. z scores let us compare apples to oranges: a P/E and a profit margin become the same
+            currency, "peer gaps."
+          </p>
+          <p>
+            <strong>4. <Term id="percentile">Percentile</Term> and <Term id="decile">decile</Term>.</strong>{" "}
+            A percentile says what share of the group sits below you: percentile 88 means higher than 88% of
+            peers. Sort a group and cut it into ten equal stacks, and each stack is a decile: decile 1 is the
+            bottom tenth of the sort, decile 10 the top tenth.
+          </p>
+          <p>
+            <strong>5. <Term id="oos">Out of sample</Term>.</strong> Every performance number on this site
+            comes from predictions made BEFORE the answer existed, then graded once returns realized, the way
+            a weather forecast is judged. Nothing is graded on data the model was allowed to study first.
+          </p>
+        </div>
+
+        <h3>From raw data to a sell decile, one stock at a time</h3>
+        <p className="muted small">
+          The walkthrough follows one fictional name, ACME, an S&amp;P 600 industrial supplier, through the
+          entire pipeline. Every step below is what the code actually does, in order.
+        </p>
+        <ol>
+          <li>
+            <strong>Collect what was knowable, when it was knowable.</strong> Daily prices and volumes back to
+            2010; quarterly financial statements as they were FIRST filed with the SEC (stamped with the
+            filing date, so ACME's March quarter only informs the model from its May filing date onward);
+            FINRA's daily short sale volume file; insider Form 4 filings; earnings announcement dates from
+            8-K filings. No revised or restated numbers, no information used before its public date.
+          </li>
+          <li>
+            <strong>Measure the warning signs (the factors).</strong> From that raw data, {meta.n_factors}
+            {" "}measurements per stock per month, each one a warning sign the academic literature documented
+            as predicting weak returns BEFORE we ever touched the data. Example: ACME trades at $50 with $2
+            of trailing earnings per share, so its P/E is 25. Other factors measure momentum, volatility,
+            profitability, asset growth, accruals, shorting activity, insider selling, and the market's
+            reaction to the latest earnings print.
+          </li>
+          <li>
+            <strong>Compare within the sector only (<Term id="sectorneutral">sector neutral</Term>).</strong>{" "}
+            A software company always looks expensive next to a bank; comparing raw P/Es mostly ranks
+            industries, not companies. So ACME's P/E of 25 is compared only against other S&amp;P 600
+            Industrials on the same date, never against the whole market, and S&amp;P 600 names are never
+            compared against S&amp;P 400 names.
+          </li>
+          <li>
+            <strong>Turn each comparison into a z score.</strong> Suppose S&amp;P 600 Industrials average a
+            P/E of 20 with a standard deviation of 5. ACME's z is (25 − 20) ÷ 5 = +1.0: one typical gap
+            richer than its average peer. Before computing this, the wildest 2% of values on each side are
+            clipped in ("winsorized") so one broken or freak number cannot distort the sector's average and
+            standard deviation. This repeats for all {meta.n_factors} factors, every stock, every month.
+          </li>
+          <li>
+            <strong>Point every signal the same way.</strong> Each z score is multiplied by +1 or −1 so that
+            after alignment, a BIGGER number always means MORE expected underperformance. High P/E is already
+            a red flag, so it keeps its sign; high profitability is good, so its z is flipped. Only after
+            this step does averaging signals make sense.
+          </li>
+          <li>
+            <strong>One vote per family, not per factor.</strong> The four valuation ratios are near copies
+            of one another; letting each vote would quadruple count one idea. So factors are first averaged
+            within their family (Valuation, Momentum, Volatility, Quality, Investment, Earnings Quality,
+            Short Activity, Insider Activity, Earnings Surprise), and the families are then combined. A stock
+            must have at least 3 factors across at least 2 families or it is not scored at all; missing data
+            is never guessed.
+          </li>
+          <li>
+            <strong>Weight the families.</strong> The simple baseline gives every family an equal vote. The
+            {" "}<Term id="learnedweight">learned model</Term>, which currently holds the default, instead
+            lets a <Term id="ridge">ridge regression</Term> choose the weights: refit every month using only
+            history available at that moment, allowed to give a family a negative weight where its
+            documented red flag has been paying the wrong way in this market. It holds the default only
+            because it beat the equal weight baseline <Term id="oos">out of sample</Term> under the
+            pre registered promotion rule; its full evidence file, including its refit by refit weights and
+            the overfit checks, lives on the Validation tab.
+          </li>
+          <li>
+            <strong>Cut the deciles.</strong> ACME's final score is standardized once more within its peer
+            group (so names scored on 4 families are comparable with names scored on 9), then every sector's
+            names are RANKED by score and split into ten equal stacks per sector per date.
+            <Term id="decile"> Decile</Term> 1 holds the tenth of each sector that looks best, decile 10 the
+            tenth that looks worst: the sell sleeve. Because the cut happens inside each sector, decile 10
+            always contains roughly the worst tenth of EVERY sector; the model cannot dump an entire cheap
+            industry into it. If ACME's aligned score puts it in the riskiest tenth of Industrials that
+            month, ACME is a decile 10 name regardless of how any other sector looks.
+          </li>
+          <li>
+            <strong>Grade it later.</strong> The score's job is to predict the
+            {" "}<Term id="relativereturn">sector relative forward return</Term>: ACME's total return over
+            the {meta.horizon_phrase ?? "forward window"}, minus the MEDIAN return of its sector peers over
+            the same window. If ACME returns +4% while the median Industrial returns +10%, ACME
+            underperformed by 6 points even though it went up. A name that stops trading is graded at −100%
+            rather than dropped, so failures cannot vanish from the record. Every validation chart is this
+            grading, done out of sample, across ~200 monthly cross sections since 2010.
+          </li>
+        </ol>
+
         <h3>Factor taxonomy ({meta.n_factors} active factors)</h3>
         <p>Each factor is a documented cross sectional return predictor. Every raw factor is
           <Term id="winsorize"> winsorized</Term> then <Term id="zscore">z scored</Term>
@@ -151,14 +266,42 @@ export function MethodologyView({ meta }: Bundle) {
           requires an identifying User Agent header. yfinance remains a per name fallback.
         </p>
 
-        <h3>Torpedo screener (absolute risk)</h3>
+        <h3>From the same data to a torpedo percentile</h3>
         <p>
-          The {meta.n_torpedo_features} torpedo risk features are <Term id="zscore">z scored</Term> across the
-          <strong> whole universe</strong> at each date (never within sector), sign aligned so higher always
-          means more risk, averaged into a composite, then turned into a 0 to 100 universe
-          <Term id="percentile"> percentile</Term> and a <Term id="tier">tier</Term> (Stable, Mainstream,
-          Elevated). This is the same machinery as the sell model with the sector grouping removed, which is
-          exactly what makes it the absolute counterpart.
+          The torpedo screener reuses the pipeline above with three deliberate differences, because it
+          answers a different question: not "will ACME lag its sector peers" but "is ACME dangerous
+          outright."
+        </p>
+        <ol>
+          <li>
+            <strong>Same measurements, plus liquidity and crowding.</strong> It uses
+            {" "}{meta.n_torpedo_features} risk features: the sell model's factors plus torpedo only ones
+            like Amihud illiquidity (how violently the price moves per dollar traded, a measure of how hard
+            the exit is) and the short interest snapshot. Illiquidity is torpedo only on purpose: as a
+            return predictor it points the wrong way (illiquid names earn a premium), but as an exit risk it
+            belongs here.
+          </li>
+          <li>
+            <strong>z scored against the WHOLE universe, not the sector.</strong> The sell model removes
+            sector effects because it wants the best and worst of every sector. The torpedo keeps them,
+            because an entire sector CAN be dangerous at once, and hiding that would defeat its purpose.
+          </li>
+          <li>
+            <strong>Equal weights, no learning, then a percentile.</strong> The aligned z scores are simply
+            averaged (deliberately simple and stable; nothing is fitted, so nothing can be overfit), and the
+            average is converted into a 0 to 100 universe <Term id="percentile">percentile</Term>: torpedo 88
+            means ACME screens riskier than 88% of every stock in the universe that day. The percentile maps
+            to a plain language <Term id="tier">tier</Term>: 0 to 30 Stable, 30 to 70 Mainstream, 70 to 100
+            Elevated.
+          </li>
+        </ol>
+        <p>
+          Its report card is the absolute damage chart on the Torpedo tab: how often each torpedo decile went
+          on to lose 20% or 50% of its value over the horizon window, with delistings counted at their
+          terminal value. And because the sell model's learned weights fade several documented flags that the
+          torpedo counts fully (quality, accruals, volatility), the two rankings are EXPECTED to disagree on
+          many names; the Torpedo tab explains that disagreement, and names where both agree are the
+          platform's strongest signal.
         </p>
 
         <h3>Data integrity gate</h3>
