@@ -102,3 +102,48 @@ def latest_torpedo_table(panel: pd.DataFrame) -> pd.DataFrame:
     latest = panel[panel["date"] == latest_date].copy()
     latest = latest.dropna(subset=["torpedo_pct"])
     return latest.sort_values("torpedo_pct", ascending=False)
+
+
+def torpedo_reliability(panel: pd.DataFrame, horizon) -> pd.DataFrame:
+    """Does a high torpedo percentile actually precede absolute damage?
+
+    The honest test for an ABSOLUTE risk lens is absolute outcomes, not
+    sector relative ranks: per torpedo decile (whole universe, both indexes,
+    exactly as the screener ranks), the frequency of a genuine torpedo hit
+    over the forward horizon window. A hit is an absolute total return at or
+    below -20% (damage) or -50% (blow up). Delistings are included at the
+    terminal return, so bankruptcies count as hits instead of vanishing.
+    Frequencies are computed per date and then averaged across dates (Fama
+    MacBeth style) so one crash quarter cannot dominate the curve.
+    """
+    import config as _config
+    sfx, _months = _config.horizon_spec(horizon)
+    label = f"fwd_ret_{sfx}"
+    if "torpedo_pct" not in panel.columns or label not in panel.columns:
+        return pd.DataFrame(columns=["torpedo_decile", "p_loss20", "p_loss50",
+                                     "mean_abs_ret", "median_abs_ret",
+                                     "n_obs", "n_dates"])
+    d = panel.dropna(subset=["torpedo_pct", label])[["date", "torpedo_pct", label]].copy()
+    if d.empty:
+        return pd.DataFrame(columns=["torpedo_decile", "p_loss20", "p_loss50",
+                                     "mean_abs_ret", "median_abs_ret",
+                                     "n_obs", "n_dates"])
+    d["torpedo_decile"] = np.ceil(d["torpedo_pct"] / 10.0).clip(1, 10).astype(int)
+    per_date = d.groupby(["date", "torpedo_decile"]).agg(
+        p20=(label, lambda s: float((s <= -0.20).mean())),
+        p50=(label, lambda s: float((s <= -0.50).mean())),
+        mean_ret=(label, "mean"),
+        med_ret=(label, "median"),
+        n=(label, "size"),
+    ).reset_index()
+    agg = per_date.groupby("torpedo_decile").agg(
+        p_loss20=("p20", "mean"),
+        p_loss50=("p50", "mean"),
+        mean_abs_ret=("mean_ret", "mean"),
+        median_abs_ret=("med_ret", "mean"),
+        n_obs=("n", "sum"),
+        n_dates=("n", "size"),
+    ).reset_index()
+    logger.info("Torpedo reliability (h=%s): decile 10 P(<=-20%%)=%.1f%% vs decile 1 %.1f%%",
+                sfx, float(agg.iloc[-1]["p_loss20"]) * 100, float(agg.iloc[0]["p_loss20"]) * 100)
+    return agg

@@ -1,6 +1,6 @@
 import {
-  Backtest, Drilldown, Exclusions, FactorIC, MCSim, Meta, Overrides, ScoreRow,
-  SectorDeciles, Torpedo, Transitions, Validation,
+  Backtest, DecilePaths, Drilldown, Exclusions, FactorIC, MCSim, Meta, Overrides,
+  ScoreRow, SectorDeciles, Torpedo, Transitions, Validation,
 } from "./types";
 
 async function getJSON<T>(path: string): Promise<T> {
@@ -11,7 +11,7 @@ async function getJSON<T>(path: string): Promise<T> {
 
 export async function loadAll() {
   const [meta, scores, sectorDeciles, torpedo, factorIC, validation, backtest,
-         mcSim, exclusions, drilldown, transitions, overrides] = await Promise.all([
+         mcSim, exclusions, drilldown, transitions, overrides, decilePaths] = await Promise.all([
     getJSON<Meta>("/meta.json"),
     getJSON<ScoreRow[]>("/data/scores.json"),
     getJSON<SectorDeciles>("/data/sector_deciles.json"),
@@ -24,9 +24,11 @@ export async function loadAll() {
     getJSON<Drilldown>("/data/drilldown.json"),
     getJSON<Transitions>("/data/transitions.json"),
     getJSON<Overrides>("/data/overrides.json"),
+    getJSON<DecilePaths>("/data/decile_paths.json").catch(
+      () => ({ date: null, horizon: null, benchmark_adjusted: false, series: [] } as DecilePaths)),
   ]);
   return { meta, scores, sectorDeciles, torpedo, factorIC, validation, backtest,
-           mcSim, exclusions, drilldown, transitions, overrides };
+           mcSim, exclusions, drilldown, transitions, overrides, decilePaths };
 }
 
 export type Bundle = Awaited<ReturnType<typeof loadAll>>;

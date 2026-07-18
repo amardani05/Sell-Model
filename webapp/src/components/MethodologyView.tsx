@@ -118,7 +118,7 @@ export function MethodologyView({ meta }: Bundle) {
             <Term id="decile"> deciles</Term>. This baseline ships and is validated first.</li>
           <li><Term id="learnedweight">Learned weight</Term> model (ridge), trained
             <Term id="walkforward"> walk forward</Term> on the selection universe against forward relative
-            returns, fitted on every run since the 183 quarter history showed the factor families carry
+            returns. Concretely: a ridge regression refit every month on an expanding window (fit on all cross sections strictly before t, never on t itself; alpha 10 shrinkage on the peer group z scores plus three pre registered interaction terms; the first fit waits for six cross sections of history). Its refit by refit coefficients are published on the Validation tab, and an in sample overfit ceiling is reported next to the out of sample IC. Fitted on every run since the 183 quarter history showed the factor families carry
             opposite signs (valuation flags work, quality flags inverted), which an equal weight sum cancels
             and a fit can learn. It becomes the default scorer only if it <strong>beats the baseline
             <Term id="oos"> out of sample</Term></strong> on a paired per date IC t test at a one sided 5% bar

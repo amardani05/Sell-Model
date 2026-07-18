@@ -43,6 +43,10 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     label: "equal weight composite",
     def: "The baseline score: the plain average of the direction aligned sector neutral factors, giving each factor the same weight.",
   },
+  ridge: {
+    label: "ridge regression",
+    def: "A linear regression with a penalty on large coefficients. The penalty shrinks every factor weight toward zero, so a factor only earns influence by predicting consistently; this is the standard guard against overfitting in linear models.",
+  },
   learnedweight: {
     label: "learned weight",
     def: "An optional model (ridge, logistic, or gradient boosted trees) that fits factor weights from history. It only becomes the default if it beats the equal weight baseline out of sample.",

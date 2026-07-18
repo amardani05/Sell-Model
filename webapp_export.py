@@ -64,7 +64,8 @@ def export_scores(latest: pd.DataFrame, score_col: str, decile_col: str) -> None
     _write(_records(df), "scores")
 
 
-def export_torpedo(latest: pd.DataFrame, score_col: str, decile_col: str) -> None:
+def export_torpedo(latest: pd.DataFrame, score_col: str, decile_col: str,
+                   reliability: pd.DataFrame | None = None, horizon=None) -> None:
     """Latest cross section ranked by absolute torpedo risk, plus tier counts."""
     if "torpedo_pct" not in latest.columns:
         _write({"names": [], "tier_counts": [], "tier_colors": config.TORPEDO_TIER_COLORS,
@@ -82,6 +83,9 @@ def export_torpedo(latest: pd.DataFrame, score_col: str, decile_col: str) -> Non
         "tier_counts": _records(tier_counts),
         "tier_colors": config.TORPEDO_TIER_COLORS,
         "tier_order": [t[2] for t in config.TORPEDO_TIERS],
+        "reliability": _records(reliability) if reliability is not None else [],
+        "reliability_horizon": (config.horizon_spec(horizon)[0].upper()
+                                if horizon is not None else None),
     }, "torpedo")
 
 
@@ -122,7 +126,10 @@ def export_validation(ic_summaries: dict, decile_summaries: dict,
                       icw_paired: dict | None = None,
                       factor_zoo: dict | None = None,
                       regime_ic: pd.DataFrame | None = None,
-                      exposures: pd.DataFrame | None = None) -> None:
+                      exposures: pd.DataFrame | None = None,
+                      calibrations: dict | None = None,
+                      learned_coefs: pd.DataFrame | None = None,
+                      overfit: dict | None = None) -> None:
     """ic_summaries / decile_summaries keyed by horizon_q -> validate dataclasses."""
     ic_payload = {}
     for h, s in ic_summaries.items():
@@ -160,9 +167,82 @@ def export_validation(ic_summaries: dict, decile_summaries: dict,
         "factor_zoo": factor_zoo,
         "ic_by_regime": _records(regime_ic) if regime_ic is not None else [],
         "screen_exposures": _records(exposures) if exposures is not None else [],
+        "calibration_by_horizon": ({sfx: _records(c) for sfx, c in calibrations.items()}
+                                   if calibrations else {}),
+        "learned_coefs": _records(learned_coefs) if learned_coefs is not None else [],
+        "overfit_check": overfit or {},
         "label_winsor_pct": config.LABEL_WINSOR_PCT,
         "era_min_avg_factors": config.ERA_MIN_AVG_FACTORS,
     }, "validation")
+
+
+def export_decile_paths(panel: pd.DataFrame, prices: pd.DataFrame | None,
+                        benchmark_px: pd.Series | None, decile_col: str,
+                        horizon) -> None:
+    """Spaghetti cohort: every tail decile name of the last GRADED cross
+    section, as weekly benchmark adjusted cumulative return paths.
+
+    "Last graded" = the most recent cross section whose full horizon window
+    has realized, so every line is a completed outcome, not a partial one.
+    Deciles 1 and 2 are the green group, 9 and 10 the red group; a line that
+    stops early is a name that stopped trading (delisting), which is the
+    outcome the sell sleeve exists to catch.
+    """
+    empty = {"date": None, "horizon": None, "benchmark_adjusted": False, "series": []}
+    if prices is None or panel.empty or decile_col not in panel.columns:
+        _write(empty, "decile_paths")
+        return
+    sfx, _months = config.horizon_spec(horizon)
+    days = {s: d for s, d, _m in config.TERM_STRUCTURE_HORIZONS}[sfx]
+    idx = prices.index
+    t_star = None
+    for t in sorted(panel["date"].unique(), reverse=True):
+        pos = idx.searchsorted(pd.Timestamp(t))
+        if pos + days < len(idx):
+            t_star = pd.Timestamp(t)
+            break
+    if t_star is None:
+        _write(empty, "decile_paths")
+        return
+    g = panel[panel["date"] == t_star]
+    if "index_name" in g.columns:
+        g = g[g["index_name"] == config.SELECTION_INDEX]
+    picks = g.dropna(subset=[decile_col])
+    picks = picks[picks[decile_col].isin([1, 2, 9, 10])]
+    pos = idx.searchsorted(t_star)
+    window = idx[pos: pos + days + 1]
+    bm = None
+    if benchmark_px is not None and len(benchmark_px):
+        b = benchmark_px.reindex(window).ffill()
+        if len(b) and pd.notna(b.iloc[0]) and b.iloc[0] > 0:
+            bm = b / b.iloc[0] - 1.0
+    series = []
+    step = 5
+    for _, r in picks.iterrows():
+        tk = r["ticker"]
+        if tk not in prices.columns:
+            continue
+        px = prices[tk].reindex(window)
+        if pd.isna(px.iloc[0]) or px.iloc[0] <= 0:
+            continue
+        cum = px / px.iloc[0] - 1.0
+        adj = (cum - bm) if bm is not None else cum
+        keep = list(range(0, len(adj), step))
+        if keep[-1] != len(adj) - 1:
+            keep.append(len(adj) - 1)
+        pts = adj.iloc[keep].dropna()
+        if len(pts) < 2:
+            continue
+        series.append({
+            "ticker": tk,
+            "decile": int(r[decile_col]),
+            "group": "bottom" if r[decile_col] >= 9 else "top",
+            "path": [{"d": pd.Timestamp(d).strftime("%Y-%m-%d"), "v": _round(v)}
+                     for d, v in pts.items()],
+        })
+    _write({"date": t_star.strftime("%Y-%m-%d"), "horizon": sfx.upper(),
+            "benchmark_adjusted": bm is not None, "series": series}, "decile_paths")
+    logger.info("decile paths: cohort %s, %d names", t_star.date(), len(series))
 
 
 def export_backtest(results: dict, seg_year: pd.DataFrame, seg_regime: pd.DataFrame) -> None:
@@ -416,7 +496,8 @@ def export_all(*, panel, latest, score_col, decile_col, factor_ic, horizon_q,
                event_study, eras, era_ic, yearly_ic, family_roll=None, stress=None,
                term_structure=None, icw_weights=None, icw_paired=None,
                factor_zoo=None, regime_ic=None, exposures=None,
-               earnings_events=None,
+               earnings_events=None, calibrations=None, learned_coefs=None,
+               overfit=None, torp_rel=None, prices=None, benchmark_px=None,
                backtests, seg_year, seg_regime, mc, exclusions,
                ov_active=None, ov_scoreboard=None, meta_kwargs=None) -> None:
     _ensure()
@@ -434,7 +515,7 @@ def export_all(*, panel, latest, score_col, decile_col, factor_ic, horizon_q,
         latest["index_name"] = ""
     export_scores(latest, score_col, decile_col)
     export_sector_deciles(latest, decile_col)
-    export_torpedo(latest, score_col, decile_col)
+    export_torpedo(latest, score_col, decile_col, reliability=torp_rel, horizon=horizon_q)
     export_factor_ic(factor_ic, horizon_q)
     export_validation(ic_summaries, decile_summaries, calibration, comparison,
                       promotion, event_study, eras, era_ic, yearly_ic,
@@ -442,8 +523,10 @@ def export_all(*, panel, latest, score_col, decile_col, factor_ic, horizon_q,
                       term_structure=term_structure,
                       icw_weights=icw_weights, icw_paired=icw_paired,
                       factor_zoo=factor_zoo, regime_ic=regime_ic,
-                      exposures=exposures)
+                      exposures=exposures, calibrations=calibrations,
+                      learned_coefs=learned_coefs, overfit=overfit)
     export_backtest(backtests, seg_year, seg_regime)
+    export_decile_paths(panel, prices, benchmark_px, decile_col, horizon_q)
     export_mc(mc)
     export_exclusions(exclusions)
     export_drilldown(panel, latest, score_col, decile_col, earnings_events=earnings_events)

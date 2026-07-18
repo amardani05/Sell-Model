@@ -5,17 +5,21 @@ import { DataTable } from "./DataTable";
 import { Term } from "./Term";
 import { BacktestSleeve, CalibrationRow, EraICRow, HorizonICRow, MCTier } from "../lib/types";
 
+const HORIZON_PHRASE: Record<string, string> = {
+  "1m": "next month", "1q": "next quarter", "2q": "next 2 quarters", "4q": "next 4 quarters",
+};
+
 const TIER_COLORS: Record<string, string> = {
   full: "#8893a0", ex10: "#1d62a8", ex9_10: "#2c7a4b", top_half: "#6a4aa0",
 };
 
-export function ValidationBacktestView({ meta, validation, backtest, mcSim, exclusions, overrides }: Bundle) {
+export function ValidationBacktestView({ meta, validation, backtest, mcSim, exclusions, overrides, decilePaths }: Bundle) {
   // Horizon keys are label suffixes ("1m"/"1q"/"2q"/"4q"); headline is quarterly.
   const horizons = meta.horizons_available.map(String);
   const [h, setH] = useState<string>(meta.horizon ?? `${meta.horizon_q}q`);
   const ic = validation.ic[h];
   const dec = validation.deciles[h];
-  const cal = validation.calibration ?? [];
+  const cal = validation.calibration_by_horizon?.[h] ?? validation.calibration ?? [];
   const evAll = (validation.event_study ?? []).filter((e) => e.cohort === "all");
   const evEnt = (validation.event_study ?? []).filter((e) => e.cohort === "entrant");
   const eras = validation.eras ?? [];
@@ -210,6 +214,107 @@ export function ValidationBacktestView({ meta, validation, backtest, mcSim, excl
               shapes: [{ type: "line", x0: 1, x1: 10, y0: 0.5, y1: 0.5, line: { color: "#888", dash: "dash", width: 1 } }],
             }} />
         ) : <Empty />}
+      </section>
+
+      {/* ================= LAST GRADED COHORT ================= */}
+      <section className="card span-12">
+        <h3>The last graded cohort: every tail decile name, one line each</h3>
+        <p className="muted small">
+          Every name that sat in deciles 1 and 2 (green) or 9 and 10 (red) on {decilePaths.date ?? "n/a"},
+          the most recent cross section whose full {decilePaths.horizon ?? ""} window has realized. Each line
+          is one stock's cumulative return{decilePaths.benchmark_adjusted ? " minus the benchmark (IJR)" : ""},
+          sampled weekly; the two bold lines are each group's median. A line that stops early is a name that
+          stopped trading. This is the calibration chart with the anonymity removed: hover any line for the
+          ticker. Expect overlap between the groups; the claim is that the red CENTER sits below the green
+          center, not that every red name loses.
+        </p>
+        {decilePaths.series.length ? (
+          <Plot height={420}
+            data={[
+              ...decilePaths.series.map((sr) => ({
+                type: "scatter" as const, mode: "lines" as const,
+                x: sr.path.map((pt) => pt.d), y: sr.path.map((pt) => pt.v),
+                line: { color: sr.group === "bottom" ? "rgba(179,0,27,0.22)" : "rgba(44,122,75,0.22)", width: 1 },
+                showlegend: false,
+                hovertemplate: sr.ticker + " (D" + sr.decile + ") %{x}: %{y:.1%}<extra></extra>",
+              })),
+              ...(["top", "bottom"] as const).map((grp) => {
+                const members = decilePaths.series.filter((sr) => sr.group === grp);
+                const byDate = new Map<string, number[]>();
+                for (const sr of members) for (const pt of sr.path) {
+                  if (pt.v == null) continue;
+                  const arr = byDate.get(pt.d) ?? [];
+                  arr.push(pt.v); byDate.set(pt.d, arr);
+                }
+                const ds = [...byDate.keys()].sort();
+                const med = ds.map((d) => {
+                  const a = [...(byDate.get(d) ?? [])].sort((x, y) => x - y);
+                  return a.length ? a[Math.floor(a.length / 2)] : null;
+                });
+                return {
+                  type: "scatter" as const, mode: "lines" as const,
+                  x: ds, y: med,
+                  name: grp === "top" ? "deciles 1 and 2 median" : "deciles 9 and 10 median",
+                  line: { color: grp === "top" ? "#1e5c38" : "#8f0016", width: 4 },
+                };
+              }),
+            ]}
+            layout={{ yaxis: { title: decilePaths.benchmark_adjusted ? "cumulative return vs IJR" : "cumulative return",
+                               tickformat: ".0%", zeroline: true },
+                      legend: { orientation: "h", y: -0.15 } }} />
+        ) : <Empty />}
+      </section>
+
+      {/* ================= INSIDE THE LEARNED MODEL ================= */}
+      <section className="card span-12">
+        <h3>Inside the learned model: how it is taught, and is it overfit?</h3>
+        <p className="muted small">
+          <strong>How it is taught.</strong> The learned scorer is a <Term id="ridge">ridge regression</Term>
+          {" "}refit every month on an expanding window: at each cross section t it fits on ALL cross sections
+          strictly before t (features = the {meta.n_factors} peer group z scores plus three pre registered
+          interaction terms; label = the {HORIZON_PHRASE[h] ?? h} sector relative return), then scores date t
+          without ever having seen it. Every IC on this site is that <Term id="oos">out of sample</Term>
+          {" "}prediction, graded later. The ridge penalty (alpha 10) shrinks all coefficients toward zero, so
+          a factor earns weight only by predicting consistently across years, not by fitting one episode.
+        </p>
+        <p className="muted small">
+          <strong>The overfit evidence, in one place.</strong>{" "}
+          {validation.overfit_check?.insample_ic != null && (
+            <>The deliberate overfit ceiling (one ridge fit on the ENTIRE history, graded on the very data
+            it was fitted to) reaches IC {fmtSigned(validation.overfit_check.insample_ic, 4)}, while the honest
+            walk forward number reported everywhere on this site stands at or above it. A memorizing model
+            shows a wide gap between those two; here there is none, so the regularization, not memorization,
+            is doing the work. </>
+          )}
+          The placebo gate shuffles the score and collapses IC to zero; the factor zoo null (above) shows
+          random composites from the same pool earn nothing; the IC is positive in calm, normal, and stressed
+          tape and at every label horizon; and the coefficient paths below move slowly, where an overfit
+          model's weights would whip around from refit to refit.
+        </p>
+        {validation.learned_coefs?.length ? (
+          <Plot height={340}
+            data={(() => {
+              const byGroup = new Map<string, Map<string, number>>();
+              for (const r of validation.learned_coefs) {
+                const grp = (meta.factor_groups ?? {})[r.feature] ?? "Interactions";
+                const m = byGroup.get(grp) ?? new Map<string, number>();
+                m.set(r.date, (m.get(r.date) ?? 0) + r.coef);
+                byGroup.set(grp, m);
+              }
+              return [...byGroup.entries()].map(([grp, m]) => {
+                const ds = [...m.keys()].sort();
+                return { type: "scatter" as const, mode: "lines" as const, name: grp,
+                         x: ds, y: ds.map((d) => m.get(d) ?? null), line: { width: 2 } };
+              });
+            })()}
+            layout={{ yaxis: { title: "summed ridge coefficient (per family)", zeroline: true },
+                      legend: { orientation: "h", y: -0.2 } }} />
+        ) : <Empty />}
+        <p className="muted small">
+          Reading the chart: positive means the family's red flags push a name toward the sell sleeve;
+          negative means the fit FADES that family (the quality and accruals inversion). Weights evolve as
+          evidence accumulates and jump only where a new factor family enters the feature set.
+        </p>
       </section>
 
       {/* ================= WHAT BROKE, AND WHEN ================= */}

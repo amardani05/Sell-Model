@@ -186,7 +186,7 @@ def run(args) -> None:
 
     from feature_engine import neutralize_factors, quarter_end_subset
     from model import (equal_weight_score, learned_weight_score, ic_weighted_score,
-                       add_interaction_features)
+                       add_interaction_features, insample_overfit_check)
     from validate import (summarize_ic_for_label, decile_analysis_for_label,
                           calibration_fm,
                           decile_event_study, coverage_eras, ic_summary_by_era,
@@ -217,11 +217,12 @@ def run(args) -> None:
     panel = equal_weight_score(panel)
     logger.info("=== IC weighted family blend (walk forward, realized labels only) ===")
     panel, icw_weights = ic_weighted_score(panel, horizon_q=horizon)
+    learned_coefs = pd.DataFrame(columns=["date", "feature", "coef"])
     if config.USE_LEARNED_WEIGHTS:
         logger.info("=== Learned weight model (walk forward, OOS) ===")
         # Tier 2 interactions: pre registered family products, ridge only
         panel = add_interaction_features(panel)
-        panel = learned_weight_score(panel, horizon_q=horizon)
+        panel, learned_coefs = learned_weight_score(panel, horizon_q=horizon)
 
     # Decide the default score HONESTLY: promotion requires the learned model
     # to beat the baseline out of sample by a PAIRED Newey West t test at
@@ -278,7 +279,7 @@ def run(args) -> None:
 
     # --- torpedo screener (absolute, whole universe risk view) ---
     logger.info("=== Torpedo screener (absolute whole universe risk) ===")
-    from torpedo import compute_torpedo
+    from torpedo import compute_torpedo, torpedo_reliability
     panel = compute_torpedo(panel)
 
     # --- selection universe: every headline statistic describes what IMA
@@ -302,7 +303,9 @@ def run(args) -> None:
     decile_summaries = {sfx: decile_analysis_for_label(sel, decile_col, sfx, months)
                         for sfx, _days, months in config.TERM_STRUCTURE_HORIZONS}
     factor_ic = factor_ic_table(sel, horizon)
-    calibration = calibration_fm(sel, score_col, horizon)
+    calibrations = {sfx: calibration_fm(sel, score_col, sfx)
+                    for sfx, _d, _m in config.TERM_STRUCTURE_HORIZONS}
+    calibration = calibrations[horizon]
     event_study = decile_event_study(quarter_end_subset(sel), decile_col)
     eras = coverage_eras(sel)
     era_ic = ic_summary_by_era(sel, score_col, horizon, eras)
@@ -318,6 +321,10 @@ def run(args) -> None:
     regime_ic = ic_by_vol_regime(sel, score_col, horizon, bench_px)
     # roadmap section 4: risk accounting lite for the flagged sleeve
     exposures = screen_exposures(sel_q, decile_col)
+    # torpedo reliability: absolute damage frequency by torpedo decile
+    torp_rel = torpedo_reliability(panel, horizon)
+    # overfit evidence: deliberate in sample ceiling vs the OOS numbers
+    overfit = insample_overfit_check(panel, horizon) if config.USE_LEARNED_WEIGHTS else {}
 
     # --- backtest (quarter end subset of the selection universe) ---
     logger.info("=== Backtest ===")
@@ -362,7 +369,9 @@ def run(args) -> None:
             family_roll=family_roll, stress=stress, term_structure=term_structure,
             icw_weights=icw_weights, icw_paired=icw_paired,
             factor_zoo=zoo, regime_ic=regime_ic, exposures=exposures,
-            earnings_events=earnings_events,
+            earnings_events=earnings_events, calibrations=calibrations,
+            learned_coefs=learned_coefs, overfit=overfit, torp_rel=torp_rel,
+            prices=prices, benchmark_px=bench_px,
             backtests={"hold_all": hold_all, "avoid_worst": avoid, "benchmark": bench},
             seg_year=seg_year, seg_regime=seg_regime, mc=mc, exclusions=exclusions,
             ov_active=ov_active, ov_scoreboard=ov_scoreboard,

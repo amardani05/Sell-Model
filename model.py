@@ -128,25 +128,27 @@ def equal_weight_score(panel: pd.DataFrame) -> pd.DataFrame:
 # =============================================================================
 # Learned weight model (walk forward)
 # =============================================================================
-def _fit_predict(model_name: str, X_tr: np.ndarray, y_tr: np.ndarray, X_te: np.ndarray) -> np.ndarray:
+def _fit_predict(model_name: str, X_tr: np.ndarray, y_tr: np.ndarray,
+                 X_te: np.ndarray) -> tuple[np.ndarray, np.ndarray | None]:
+    """(predictions, coefficients or None). Coefs only for the linear model."""
     if model_name == "ridge":
         m = Ridge(alpha=config.RIDGE_ALPHA)
         m.fit(X_tr, y_tr)
-        return m.predict(X_te)
+        return m.predict(X_te), m.coef_
     if model_name == "gbm":
         m = GradientBoostingRegressor(n_estimators=200, max_depth=3, subsample=0.8,
                                       learning_rate=0.03)
         m.fit(X_tr, y_tr)
-        return m.predict(X_te)
+        return m.predict(X_te), None
     if model_name == "logistic":
         # Classify "bottom quartile relative return" then use P(bad) as the score.
         thresh = np.quantile(y_tr, 0.25)
         cls = (y_tr <= thresh).astype(int)
         if cls.sum() == 0 or cls.sum() == len(cls):
-            return np.full(X_te.shape[0], np.nan)
+            return np.full(X_te.shape[0], np.nan), None
         m = LogisticRegression(C=1.0, max_iter=500)
         m.fit(X_tr, cls)
-        return m.predict_proba(X_te)[:, 1]
+        return m.predict_proba(X_te)[:, 1], None
     raise ValueError(f"Unknown LEARNED_MODEL {model_name!r}")
 
 
@@ -155,18 +157,24 @@ def learned_weight_score(
     horizon_q: int = config.DEFAULT_HORIZON_Q,
     model_name: str = config.LEARNED_MODEL,
     min_train_periods: int = config.WALK_FORWARD_MIN_TRAIN_PERIODS,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Walk forward OOS score ``score_ml`` + ``decile_ml``.
 
     Features = neutral factor columns (NaN imputed to 0 = sector neutral mean,
     since they are already sector z scores). Label = forward relative return at
     ``horizon_q``. Trains only on dates strictly before each prediction date.
+
+    Returns ``(panel, coef_history)``: for the linear model, every refit's
+    coefficients as tidy [date, feature, coef] — published on the dashboard
+    so what the model has learned is inspectable, and so weight INSTABILITY
+    (the classic overfitting tell) would be visible instead of hidden.
     """
     label = f"fwd_rel_ret_{config.horizon_spec(horizon_q)[0]}"
     cols = neutral_columns(panel)
     df = panel.copy()
     df["score_ml"] = np.nan
 
+    coef_rows: list[dict] = []
     dates = sorted(df["date"].unique())
     pos = {d: df.index[df["date"] == d] for d in dates}
     # Train on the SELECTION universe only (IMA picks from the S&P 600); the
@@ -187,10 +195,15 @@ def learned_weight_score(
         te_idx = pos[t]
         X_te = df.loc[te_idx, cols].fillna(0.0).values
         try:
-            pred = _fit_predict(model_name, X_tr, y_tr, X_te)
+            pred, coefs = _fit_predict(model_name, X_tr, y_tr, X_te)
         except Exception as exc:  # noqa: BLE001
             logger.debug("learned fit failed at %s: %s", t, exc)
             continue
+        if coefs is not None:
+            for feat, c in zip(cols, coefs):
+                coef_rows.append({"date": pd.Timestamp(t),
+                                  "feature": feat[:-len("__n")],
+                                  "coef": float(c)})
         # Higher score must mean MORE underperformance (sell). The label is a
         # return, so a model predicting low returns = high sell risk: negate.
         df.loc[te_idx, "score_ml"] = -pred
@@ -199,7 +212,8 @@ def learned_weight_score(
     df["decile_ml"] = assign_sector_deciles(df, "score_ml")
     logger.info("Learned weight (%s, h=%s): %d OOS cross sections scored",
                 model_name, horizon_q, n_fit)
-    return df
+    coef_history = pd.DataFrame(coef_rows, columns=["date", "feature", "coef"])
+    return df, coef_history
 
 
 def add_interaction_features(panel: pd.DataFrame) -> pd.DataFrame:
@@ -342,6 +356,33 @@ def ic_weighted_score(
                 "IC weights (rest equal weight until %d realized ICs exist)",
                 horizon_q, window, shrink, n_active, len(dates), min_realized)
     return df, weights_history
+
+
+def insample_overfit_check(panel: pd.DataFrame, horizon) -> dict:
+    """The overfit ceiling: ONE ridge fit on the ENTIRE history, graded on
+    the data it was fitted to.
+
+    A model that memorizes noise shows a huge gap between this deliberately
+    overfit in sample number and the walk forward out of sample IC the site
+    reports everywhere else. A model bound by its regularization shows a
+    modest one. Reported as evidence only; this score is never used.
+    """
+    from validate import summarize_ic
+    label = f"fwd_rel_ret_{config.horizon_spec(horizon)[0]}"
+    df = (panel[panel["index_name"] == config.SELECTION_INDEX].copy()
+          if "index_name" in panel.columns else panel.copy())
+    cols = neutral_columns(df)
+    if label not in df.columns or not cols:
+        return {}
+    tr = df[df[label].notna()]
+    if len(tr) < 100:
+        return {}
+    m = Ridge(alpha=config.RIDGE_ALPHA)
+    m.fit(tr[cols].fillna(0.0).values, tr[label].values)
+    df["_is_score"] = -m.predict(df[cols].fillna(0.0).values)
+    s = summarize_ic(df, "_is_score", horizon)
+    return {"insample_ic": float(s.mean_ic), "insample_t": float(s.t_stat),
+            "n_periods": int(s.n_periods)}
 
 
 def default_score_column(panel: pd.DataFrame) -> str:

@@ -67,11 +67,18 @@ export interface TorpedoName {
   torpedo_pct: number | null; torpedo_tier: string | null;
   decile: number | null; score: number | null; short_pct_float: number | null;
 }
+export interface TorpedoReliabilityRow {
+  torpedo_decile: number; p_loss20: number | null; p_loss50: number | null;
+  mean_abs_ret: number | null; median_abs_ret: number | null;
+  n_obs: number; n_dates: number;
+}
 export interface Torpedo {
   names: TorpedoName[];
   tier_counts: { torpedo_tier: string; n: number }[];
   tier_colors: Record<string, string>;
   tier_order: string[];
+  reliability?: TorpedoReliabilityRow[];
+  reliability_horizon?: string | null;
 }
 
 export interface SectorDeciles {
@@ -171,6 +178,9 @@ export interface Validation {
   ic_by_regime?: { regime: string; mean_ic: number | null; t_stat: number | null;
                    n_periods: number; avg_bench_vol: number | null }[];
   screen_exposures?: { metric: string; decile_10: number | null; universe: number | null }[];
+  calibration_by_horizon?: Record<string, CalibrationRow[]>;
+  learned_coefs?: { date: string; feature: string; coef: number }[];
+  overfit_check?: { insample_ic?: number; insample_t?: number; n_periods?: number };
   label_winsor_pct: number;
   era_min_avg_factors: number;
 }
@@ -272,4 +282,13 @@ export interface Transitions {
   exited: { ticker: string; sector: string; decile: number; prev_decile: number }[];
   latest_date: string | null;
   prev_date: string | null;
+}
+
+export interface DecilePathSeries {
+  ticker: string; decile: number; group: "top" | "bottom";
+  path: { d: string; v: number | null }[];
+}
+export interface DecilePaths {
+  date: string | null; horizon: string | null;
+  benchmark_adjusted: boolean; series: DecilePathSeries[];
 }

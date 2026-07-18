@@ -77,6 +77,47 @@ export function TorpedoView({ meta, scores, torpedo }: Bundle) {
       </section>
 
       <section className="card span-12">
+        <h3>Does the torpedo actually work? Absolute damage by torpedo decile</h3>
+        <p className="muted small">
+          The honest test for an absolute risk lens is absolute outcomes, not sector relative ranks. For every
+          historical cross section, names are bucketed by torpedo percentile (whole universe, exactly as the
+          screener ranks) and we measure how often each bucket suffered a real hit over the following
+          {" "}{torpedo.reliability_horizon ?? ""} window: a total return of −20% or worse (damage) and −50% or
+          worse (blow up). Delisted names are carried at their terminal return, so bankruptcies count as hits
+          instead of quietly vanishing. Frequencies are averaged across dates, so one crash quarter cannot
+          paint the whole curve. A working screener slopes up to the right.
+        </p>
+        {torpedo.reliability?.length ? (
+          <Plot height={320}
+            data={[
+              { type: "scatter", mode: "lines+markers", name: "P(return −20% or worse)",
+                x: torpedo.reliability.map((r) => r.torpedo_decile),
+                y: torpedo.reliability.map((r) => r.p_loss20),
+                line: { color: "#c98a00", width: 2.5 }, marker: { size: 7 },
+                hovertemplate: "torpedo decile %{x}: %{y:.1%}<extra>damage</extra>" },
+              { type: "scatter", mode: "lines+markers", name: "P(return −50% or worse)",
+                x: torpedo.reliability.map((r) => r.torpedo_decile),
+                y: torpedo.reliability.map((r) => r.p_loss50),
+                line: { color: "#b3001b", width: 2.5, dash: "dot" }, marker: { size: 7 },
+                hovertemplate: "torpedo decile %{x}: %{y:.1%}<extra>blow up</extra>" },
+            ]}
+            layout={{
+              xaxis: { title: "torpedo decile (1 = calm → 10 = highest screened risk)", dtick: 1 },
+              yaxis: { title: "frequency over the horizon window", tickformat: ".0%", rangemode: "tozero" },
+            }} />
+        ) : <p className="muted">Reliability history not computed in this run.</p>}
+        {torpedo.reliability?.length ? (
+          <p className="muted small">
+            Decile 10 names went on to lose 20% or more
+            {" "}{Math.round((torpedo.reliability[torpedo.reliability.length - 1]?.p_loss20 ?? 0) * 100)}% of the
+            time versus {Math.round((torpedo.reliability[0]?.p_loss20 ?? 0) * 100)}% for decile 1, pooled over
+            {" "}{torpedo.reliability[0]?.n_dates ?? 0} cross sections. This chart is the torpedo's report card,
+            separate from the sell model's IC based validation, because the two lenses make different claims.
+          </p>
+        ) : null}
+      </section>
+
+      <section className="card span-12">
         <h3>Relative vs absolute contrast</h3>
         <p className="muted small">
           Horizontal axis: sector neutral sell <Term id="relativereturn">relative risk</Term> score (right = more
