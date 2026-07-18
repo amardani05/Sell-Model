@@ -128,65 +128,65 @@ export function MethodologyView({ meta }: Bundle) {
           </li>
           <li>
             <strong>Turn each comparison into a z score.</strong> Suppose S&amp;P 600 Industrials average a
-            P/E of 20 with a standard deviation of 5. ACME's z is (25 − 20) ÷ 5 = +1.0: one typical gap
+            P/E of 20 (the peer average, <Formula tex={String.raw`\mu`} />) with a standard deviation of 5 (<Formula tex={String.raw`\sigma`} />). ACME's z is (25 − 20) ÷ 5 = +1.0: one typical gap
             richer than its average peer. Before computing this, the wildest 2% of values on each side are
             clipped in ("winsorized") so one broken or freak number cannot distort the sector's average and
             standard deviation. This repeats for all {meta.n_factors} factors, every stock, every month.
             In symbols, for stock i, factor f, sector s, date t:
-            <Formula block tex={String.raw`z_{i,f,t} = \frac{x_{i,f,t} - \mu_{f,s,t}}{\sigma_{f,s,t}} \qquad \text{ACME: } z = \frac{25 - 20}{5} = +1.0`} />
+            <Formula block tex={String.raw`\htmlData{tip=how unusual stock i is on factor f among its sector peers at date t}{z_{i,f,t}} = \frac{\htmlData{tip=the stock's raw value for this factor}{x_{i,f,t}} - \htmlData{tip=the average of this factor across the sector peers}{\mu_{f,s,t}}}{\htmlData{tip=the typical gap from that average (the standard deviation)}{\sigma_{f,s,t}}} \qquad \text{ACME: } z = \frac{25 - 20}{5} = +1.0`} />
           </li>
           <li>
-            <strong>Point every signal the same way.</strong> Each z score is multiplied by +1 or −1 so that
+            <strong>Point every signal the same way.</strong> Each z score is multiplied by a direction <Formula tex={String.raw`d_f`} /> of +1 or −1 so that
             after alignment, a BIGGER number always means MORE expected underperformance. High P/E is already
             a red flag, so it keeps its sign; high profitability is good, so its z is flipped. Only after
             this step does averaging signals make sense.
-            <Formula block tex={String.raw`\tilde{z}_{i,f,t} = d_f \cdot z_{i,f,t}, \qquad d_f \in \{+1, -1\}`} />
+            <Formula block tex={String.raw`\htmlData{tip=the aligned z score where bigger always means more sell risk}{\tilde{z}_{i,f,t}} = \htmlData{tip=the documented red flag direction of the factor}{d_f} \cdot z_{i,f,t}, \qquad d_f \in \{+1, -1\}`} />
           </li>
           <li>
             <strong>One vote per family, not per factor.</strong> The four valuation ratios are near copies
             of one another; letting each vote would quadruple count one idea. So factors are first averaged
-            within their family (Valuation, Momentum, Volatility, Quality, Investment, Earnings Quality,
+            within their family into a family score <Formula tex={String.raw`F`} /> (Valuation, Momentum, Volatility, Quality, Investment, Earnings Quality,
             Short Activity, Insider Activity, Earnings Surprise), and the families are then combined. A stock
             must have at least 3 factors across at least 2 families or it is not scored at all; missing data
             is never guessed. Family score, then the equal weight composite:
-            <Formula block tex={String.raw`F_{i,g,t} = \underset{f \in g}{\text{mean}}\, \tilde{z}_{i,f,t} \qquad S^{EW}_{i,t} = \underset{g}{\text{mean}}\, F_{i,g,t}`} />
+            <Formula block tex={String.raw`\htmlData{tip=the family score: the average aligned z inside family g}{F_{i,g,t}} = \underset{f \in g}{\text{mean}}\, \tilde{z}_{i,f,t} \qquad \htmlData{tip=the equal weight composite: one vote per family}{S^{EW}_{i,t}} = \underset{g}{\text{mean}}\, F_{i,g,t}`} />
           </li>
           <li>
-            <strong>Weight the families.</strong> The simple baseline gives every family an equal vote. The
+            <strong>Weight the families.</strong> The simple baseline <Formula tex={String.raw`S^{EW}`} /> gives every family an equal vote. The
             {" "}<Term id="learnedweight">learned model</Term>, which currently holds the default, instead
-            lets a <Term id="ridge">ridge regression</Term> choose the weights: refit every month using only
+            lets a <Term id="ridge">ridge regression</Term> choose the weights <Formula tex={String.raw`\hat{w}_t`} />: refit every month using only
             history available at that moment, allowed to give a family a negative weight where its
             documented red flag has been paying the wrong way in this market. It holds the default only
             because it beat the equal weight baseline <Term id="oos">out of sample</Term> under the
             pre registered promotion rule; its full evidence file, including its refit by refit weights and
             the overfit checks, lives on the Validation tab. The fit solves, at every date t using only
             earlier cross sections u:
-            <Formula block tex={String.raw`\hat{w}_t = \arg\min_{w} \sum_{u < t} \big(r^{rel}_{u} - X_{u} w\big)^2 + \alpha \lVert w \rVert^2, \qquad \alpha = 10`} />
+            <Formula block tex={String.raw`\htmlData{tip=the factor weights fitted at date t}{\hat{w}_t} = \arg\min_{w} \sum_{\htmlData{tip=only cross sections strictly BEFORE date t}{u < t}} \big(\htmlData{tip=the realized sector relative return}{r^{rel}_{u}} - \htmlData{tip=the matrix of aligned factor z scores}{X_{u}} w\big)^2 + \htmlData{tip=the shrinkage penalty that fights overfitting}{\alpha} \lVert w \rVert^2, \qquad \alpha = 10`} />
             and the score negates the predicted relative return, so higher still means more sell risk:
-            <Formula block tex={String.raw`S^{ML}_{i,t} = -\, X_{i,t} \hat{w}_t`} />
+            <Formula block tex={String.raw`\htmlData{tip=the learned model score: the negated predicted relative return}{S^{ML}_{i,t}} = -\, X_{i,t} \hat{w}_t`} />
           </li>
           <li>
-            <strong>Cut the deciles.</strong> ACME's final score is standardized once more within its peer
+            <strong>Cut the deciles.</strong> ACME's final score <Formula tex={String.raw`S_{i,t}`} /> is standardized once more within its peer
             group (so names scored on 4 families are comparable with names scored on 9), then every sector's
             names are RANKED by score and split into ten equal stacks per sector per date.
-            <Term id="decile"> Decile</Term> 1 holds the tenth of each sector that looks best, decile 10 the
+            <Term id="decile"> Decile</Term> <Formula tex={String.raw`D`} /> 1 holds the tenth of each sector that looks best, decile 10 the
             tenth that looks worst: the sell sleeve. Because the cut happens inside each sector, decile 10
             always contains roughly the worst tenth of EVERY sector; the model cannot dump an entire cheap
             industry into it. If ACME's aligned score puts it in the riskiest tenth of Industrials that
             month, ACME is a decile 10 name regardless of how any other sector looks. With rank% the within
             sector percentile rank of the score (0 to 1):
-            <Formula block tex={String.raw`D_{i,t} = \Big\lceil 10 \cdot \text{rank\%}\big(S_{i,t}\big) \Big\rceil`} />
+            <Formula block tex={String.raw`\htmlData{tip=the sell decile from 1 best to 10 worst}{D_{i,t}} = \Big\lceil 10 \cdot \htmlData{tip=the within sector percentile rank of the score between 0 and 1}{\text{rank\%}}\big(S_{i,t}\big) \Big\rceil`} />
           </li>
           <li>
             <strong>Grade it later.</strong> The score's job is to predict the
-            {" "}<Term id="relativereturn">sector relative forward return</Term>: ACME's total return over
+            {" "}<Term id="relativereturn">sector relative forward return</Term> <Formula tex={String.raw`r^{rel}`} />: ACME's total return over
             the {meta.horizon_phrase ?? "forward window"}, minus the MEDIAN return of its sector peers over
             the same window. If ACME returns +4% while the median Industrial returns +10%, ACME
             underperformed by 6 points even though it went up. A name that stops trading is graded at −100%
             rather than dropped, so failures cannot vanish from the record. Every validation chart is this
             grading, done out of sample, across ~200 monthly cross sections since 2010. With h the horizon
             and s(i) the stock's sector peers:
-            <Formula block tex={String.raw`r^{rel}_{i,t} = r_{i,(t,\,t+h]} - \underset{j \in s(i)}{\text{median}}\; r_{j,(t,\,t+h]}`} />
+            <Formula block tex={String.raw`\htmlData{tip=the sector relative forward return the model is graded on}{r^{rel}_{i,t}} = \htmlData{tip=the stock's total return from t out to the horizon h}{r_{i,(t,\,t+h]}} - \htmlData{tip=the middle total return among the stock's sector peers}{\underset{j \in s(i)}{\text{median}}\; r_{j,(t,\,t+h]}}`} />
           </li>
         </ol>
 
@@ -302,11 +302,11 @@ export function MethodologyView({ meta }: Bundle) {
           <li>
             <strong>Equal weights, no learning, then a percentile.</strong> The aligned z scores are simply
             averaged (deliberately simple and stable; nothing is fitted, so nothing can be overfit), and the
-            average is converted into a 0 to 100 universe <Term id="percentile">percentile</Term>: torpedo 88
+            average <Formula tex={String.raw`T_{i,t}`} /> is converted into a 0 to 100 universe <Term id="percentile">percentile</Term> <Formula tex={String.raw`P_{i,t}`} />: torpedo 88
             means ACME screens riskier than 88% of every stock in the universe that day. The percentile maps
             to a plain language <Term id="tier">tier</Term>: 0 to 30 Stable, 30 to 70 Mainstream, 70 to 100
             Elevated. In symbols, with z scores taken against the whole universe u rather than the sector:
-            <Formula block tex={String.raw`T_{i,t} = \underset{f}{\text{mean}}\, \tilde{z}^{\,univ}_{i,f,t} \qquad P_{i,t} = 100 \cdot \text{rank\%}\big(T_{i,t}\big)`} />
+            <Formula block tex={String.raw`\htmlData{tip=the torpedo composite: the average whole universe risk z}{T_{i,t}} = \underset{f}{\text{mean}}\, \htmlData{tip=z scores taken against the whole universe rather than the sector}{\tilde{z}^{\,univ}_{i,f,t}} \qquad \htmlData{tip=the torpedo percentile from 0 calm to 100 riskiest}{P_{i,t}} = 100 \cdot \text{rank\%}\big(T_{i,t}\big)`} />
           </li>
         </ol>
         <p>
@@ -350,7 +350,7 @@ export function MethodologyView({ meta }: Bundle) {
             section, averaged <Term id="famamacbeth">Fama MacBeth</Term> with a <Term id="neweywest">Newey
             West</Term> <Term id="tstat">t statistic</Term> whose lag count scales with the label overlap
             (horizon − 1 quarters, floored at one). In symbols, per cross section t and pooled:
-            <Formula block tex={String.raw`IC_t = -\rho^{\,Spearman}\big(S_t,\, r^{rel}_t\big) \qquad \overline{IC} = \tfrac{1}{T} \textstyle\sum_t IC_t`} />
+            <Formula block tex={String.raw`\htmlData{tip=the information coefficient on date t}{IC_t} = -\htmlData{tip=the rank correlation between scores and realized outcomes}{\rho^{\,Spearman}}\big(S_t,\, r^{rel}_t\big) \qquad \htmlData{tip=the average IC across all cross sections}{\overline{IC}} = \tfrac{1}{T} \textstyle\sum_t IC_t`} />
             Mean IC, t, <Term id="ir">IR</Term>, the IC time series,
             an IC by year split, and the per era split are all reported.</li>
           <li><strong><Term id="calibration">Calibration</Term>, the Fama MacBeth way</strong>: score buckets are

@@ -185,3 +185,20 @@ textarea { width: 100%; resize: vertical; }
 
 /* labeled segmented control */
 .seg-labeled { display: inline-flex; align-items: center; gap: 8px; }
+
+/* KaTeX formula blocks (Methodology): full width light gray strips with
+   hoverable symbols. Tooltips use the native title attribute so they can
+   never be clipped by the horizontal scroll container. */
+.formula-block {
+  display: block;
+  width: 100%;
+  background: #f2f4f7;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 10px 0;
+  overflow-x: auto;
+  box-sizing: border-box;
+}
+.formula-block [data-tip] { cursor: help; border-radius: 3px; transition: background 0.12s; }
+.formula-block [data-tip]:hover { background: rgba(29, 98, 168, 0.16); }
+.formula-inline .katex { font-size: 1.02em; }
