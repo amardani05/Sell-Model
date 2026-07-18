@@ -199,6 +199,24 @@ textarea { width: 100%; resize: vertical; }
   overflow-x: auto;
   box-sizing: border-box;
 }
-.formula-block [data-tip] { cursor: help; border-radius: 3px; transition: background 0.12s; }
-.formula-block [data-tip]:hover { background: rgba(29, 98, 168, 0.16); }
+.formula-block [data-tip] {
+  cursor: help;
+  font-weight: 650;
+  border-bottom: 1px dotted #7a8aa0;
+  border-radius: 2px;
+  transition: background 0.12s;
+}
+.formula-block [data-tip]:hover {
+  background: rgba(29, 98, 168, 0.16);
+  border-bottom-color: var(--blue);
+}
 .formula-inline .katex { font-size: 1.02em; }
+/* Shared floating definition box for formula symbols, body appended so no
+   scroll container can clip it; visual language matches .term-tip. */
+.formula-tip {
+  position: fixed; z-index: 60; display: none;
+  padding: 10px 12px; border-radius: 8px;
+  background: #10202f; color: #eaf1f8; font-size: 12.5px; line-height: 1.5;
+  box-shadow: 0 6px 22px rgba(10, 25, 45, 0.35); pointer-events: none;
+  white-space: normal; text-align: left;
+}
