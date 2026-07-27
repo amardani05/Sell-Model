@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-07-24T14:43:57.868565Z",
+  "generated_at": "2026-07-27T15:23:22.407436Z",
   "model": "Relative Sell Model (sector neutral relative underperformance ranking)",
   "universe_size": 991,
   "n_sectors": 11,
   "n_cross_sections": 199,
   "rebalance_freq": "M",
   "selection_index": "S&P 600",
-  "n_selection": 598,
+  "n_selection": 597,
   "n_quarterly_cross_sections": 67,
   "panel_rows": 197209,
   "n_delisted_carried": 0,
@@ -57,22 +57,22 @@
   "default_score": "score_ml",
   "membership_point_in_time": false,
   "index_counts": {
-    "S&P 600": 580,
-    "S&P 400": 393
+    "S&P 600": 578,
+    "S&P 400": 394
   },
   "use_estimate_factors": false,
   "diagnostics": {
     "placebo": {
-      "real_ic": 0.06358486865801308,
-      "real_t": 3.4467813071492603,
-      "placebo_ic_mean": -0.001129323177355842,
-      "placebo_ic_std": 0.002403673525802405,
+      "real_ic": 0.06446572413403656,
+      "real_t": 3.3459367366463946,
+      "placebo_ic_mean": -0.0014288860465027408,
+      "placebo_ic_std": 0.0030683670849435615,
       "tolerance": 0.03,
       "passed": true
     },
     "lookahead": {
       "no_label_in_features": {
-        "n_features": 26,
+        "n_features": 23,
         "leak_columns": [],
         "passed": true
       },
