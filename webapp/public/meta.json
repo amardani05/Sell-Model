@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-12T14:40:09.665753Z",
+  "generated_at": "2026-08-13T13:12:37.071325Z",
   "model": "Relative Sell Model (sector neutral relative underperformance ranking)",
   "universe_size": 991,
   "n_sectors": 11,
@@ -63,10 +63,10 @@
   "use_estimate_factors": false,
   "diagnostics": {
     "placebo": {
-      "real_ic": 0.06780982545730928,
-      "real_t": 3.688623553706349,
-      "placebo_ic_mean": -0.001123650851092036,
-      "placebo_ic_std": 0.0024166517249153813,
+      "real_ic": 0.06787108096710888,
+      "real_t": 3.6942932497469956,
+      "placebo_ic_mean": -0.0011576852078001025,
+      "placebo_ic_std": 0.002437325948362382,
       "tolerance": 0.03,
       "passed": true
     },
