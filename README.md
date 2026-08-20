@@ -70,7 +70,7 @@ CLI flags: `--synthetic`, `--since YYYY-MM-DD`, `--horizon-q {1,2}`, `--cost-bps
 |---|---|
 | `config.py` | factor taxonomy (incl. **Volatility family**), red flag direction map, **selection universe** (S&P 600), monthly grid + horizons, cost bps, **data integrity gate thresholds**, coverage era threshold, Monte Carlo knobs, source flags, paths |
 | `universe.py` | **point in time** S&P 600 + 400 membership store loader + Wikipedia current fallback (warns loudly) |
-| `data_loader.py` | deep price + **volume** history from 2010 (delisting aware), shallow yfinance fundamentals (fallback), short interest |
+| `data_loader.py` | deep price + **volume** history from 2010 (delisting aware), **incremental daily top up** with split/dividend reconciliation, **price freshness gate**, shallow yfinance fundamentals (fallback), short interest |
 | `edgar_loader.py` | **SEC EDGAR XBRL companyfacts**: free quarterly fundamentals back to ~2009 with true **filing date as of stamps**, tag alias merging, YTD de-accumulation, first filed values (never restatements). No API key — User-Agent only |
 | `feature_engine.py` | sector relative factor computation (`get_field` alias pattern), the panel, **delisting aware, splice gated forward relative returns** (`detect_price_anomalies` + exclusion log), sector neutralization |
 | `model.py` | equal weight baseline + optional **walk forward** learned weight model; sector neutral deciles |
@@ -161,6 +161,30 @@ is exactly why the code keeps the baseline in charge.
 
 ---
 
+## Price freshness (runs before anything else)
+
+Two failure modes, both learned the hard way:
+
+* **Rate limiting from re downloading everything daily.** Pulling 1001 tickers x 16
+  years every morning got the job throttled, and from 2026-07-20 to 2026-08-20 every
+  run fetched a gutted universe. Normal runs now fetch only a short recent window and
+  merge it into the cache (`_incremental_refresh`); `--refresh` still forces a full
+  rebuild, and the daily job does one every Monday as a safety net.
+* **Publishing stale numbers under a fresh timestamp.** The degraded download guard
+  correctly refuses to overwrite a good cache with a partial one, but on its own it let
+  the pipeline rebuild every table from month old prices and stamp it with today's
+  date. `assert_price_freshness` now aborts the run when prices are more than
+  `PRICE_MAX_STALE_TRADING_DAYS` behind, so the unattended job leaves the previous good
+  site up instead. `meta.json` carries `prices_through` and `price_staleness_days`, the
+  dashboard header states the price date, and a banner fires if it drifts.
+
+Merging a fresh tail onto cached history is only safe because yfinance serves
+**adjusted** prices: any split or dividend retroactively rescales a ticker's whole
+history. `_reconcile_adjustments` compares the overlap window per ticker, rescales the
+stored history when the ratio is a clean constant, and refetches the full series when it
+is not. Without that, an adjusted tail grafted onto an unadjusted body would manufacture
+exactly the overnight jump the splice gate exists to catch.
+
 ## Data integrity gate (runs before any statistic)
 
 Free price feeds occasionally splice two securities under one ticker (bankruptcy
@@ -226,6 +250,25 @@ statistics (IC) are winsorization invariant; backtests always use raw gated retu
   wildly understate small cap borrow).
 * **Walk forward only**: features at t use data ≤ t; labels use returns in (t, t+h]. No
   global fit.
+
+## Payload and the daily book
+
+The dashboard ships one JSON per logical table. The per name drill down is by
+far the largest (about 1.9 MB raw, 330 KB gzipped, roughly 45% of the initial
+transfer) and most sessions never open a profile, so it is **fetched on the
+first profile open and cached for the session**, not in the initial load. Ticker
+clickability, the hover summary and the overlay's flag and quarter over quarter
+columns all read `scores.json`, which already carries the aligned z scores and
+now also the prior quarter's rank, so every table stays fully interactive before
+that file is touched. Deriving the whole profile in the browser was considered
+and rejected: it would duplicate the percentile and decomposition logic in
+TypeScript, and two copies of the same calculation is precisely the drift this
+project keeps fighting.
+
+The IMA sleeve lives in `data/ima_holdings.csv` and is published to
+`holdings.json` on every run, so the Portfolio Overlay tracks the real book
+daily. Edit the CSV when the fund trades; the next refresh picks it up with no
+code change and no redeploy.
 
 ## Per name transparency
 

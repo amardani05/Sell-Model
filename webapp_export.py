@@ -47,7 +47,25 @@ def _round(v, nd=4):
 # =============================================================================
 # Tables
 # =============================================================================
-def export_scores(latest: pd.DataFrame, score_col: str, decile_col: str) -> None:
+def _prev_cross_section(panel: pd.DataFrame):
+    """The cross section roughly one quarter back, indexed by ticker.
+
+    The scoring grid is monthly, so "the previous date" would be last month.
+    Quarter over quarter comparisons step back ~75 days and take the newest
+    cross section on or before that.
+    """
+    dates = sorted(panel["date"].unique())
+    if len(dates) < 2:
+        return None, pd.DataFrame()
+    target = pd.Timestamp(dates[-1]) - pd.Timedelta(days=75)
+    older = [d for d in dates if d <= target]
+    prev_date = older[-1] if older else dates[-2]
+    prev = panel[panel["date"] == prev_date]
+    return prev_date, (prev.set_index("ticker") if not prev.empty else pd.DataFrame())
+
+
+def export_scores(latest: pd.DataFrame, score_col: str, decile_col: str,
+                  panel: pd.DataFrame | None = None) -> None:
     """Latest scored cross section: ranked sell candidates with factor detail.
 
     Carries the torpedo columns too, so the dashboard can plot the sector neutral
@@ -59,6 +77,15 @@ def export_scores(latest: pd.DataFrame, score_col: str, decile_col: str) -> None
             "short_pct_float"] + torp + factor_n
     df = latest[[c for c in keep if c in latest.columns]].copy()
     df = df.rename(columns={score_col: "score", decile_col: "decile"})
+    # Carry the prior quarter's rank so the overlay can show QoQ movement and
+    # per name flags WITHOUT the 1.9 MB drill down payload, which is now
+    # fetched lazily the first time someone opens a profile.
+    if panel is not None and not panel.empty:
+        prev_date, prev = _prev_cross_section(panel)
+        if not prev.empty:
+            df["prev_decile"] = df["ticker"].map(prev[decile_col])
+            df["prev_score"] = df["ticker"].map(prev[score_col])
+            df["prev_date"] = str(pd.Timestamp(prev_date).date())
     df["sell_rank"] = df["score"].rank(ascending=False, method="first")
     df = df.sort_values("score", ascending=False)
     _write(_records(df), "scores")
@@ -379,6 +406,41 @@ def export_overrides(ov_active: pd.DataFrame, ov_scoreboard: dict) -> None:
     }, "overrides")
 
 
+def export_holdings(latest: pd.DataFrame) -> None:
+    """Publish the IMA sleeve so the overlay tracks the real book daily.
+
+    The default holdings used to be a hardcoded array in the React source,
+    which meant the Portfolio Overlay silently showed whatever the book was on
+    the day someone last edited the component. Reading them from
+    ``data/ima_holdings.csv`` on every run makes the overlay part of the daily
+    refresh: edit the CSV when the fund trades, and the next refresh publishes
+    it. Names that are not in the current scored universe are still listed, so
+    a holding that leaves the index stays visible rather than vanishing.
+    """
+    rows: list[dict] = []
+    path = config.IMA_HOLDINGS_CSV
+    if path.exists():
+        for line in path.read_text().splitlines():
+            s = line.strip()
+            if not s or s.startswith("#") or s.lower().startswith("ticker,"):
+                continue
+            parts = [p.strip() for p in s.split(",")]
+            tk = parts[0].upper()
+            if tk:
+                rows.append({"ticker": tk, "note": parts[1] if len(parts) > 1 else ""})
+    scored = set(latest["ticker"].astype(str)) if latest is not None and len(latest) else set()
+    for r in rows:
+        r["in_universe"] = r["ticker"] in scored
+    missing = [r["ticker"] for r in rows if not r["in_universe"]]
+    if missing:
+        logger.warning("IMA holdings: %d names not in the scored universe (%s)",
+                       len(missing), ", ".join(missing))
+    logger.info("IMA holdings: %d names published from %s", len(rows), path.name)
+    _write({"as_of": (str(pd.Timestamp(latest["date"].max()).date())
+                      if latest is not None and len(latest) else None),
+            "source": path.name, "holdings": rows}, "holdings")
+
+
 def export_transitions(panel: pd.DataFrame, decile_col: str) -> None:
     """Decile persistence: the transition matrix + this quarter's flag churn.
 
@@ -434,7 +496,8 @@ def export_transitions(panel: pd.DataFrame, decile_col: str) -> None:
 def export_meta(*, universe_size, n_sectors, horizon, source, learned_enabled,
                 default_score, membership_is_pit, diagnostics, n_cross_sections,
                 cost_bps, panel_rows, n_delisted, exclusions_summary=None,
-                index_counts=None, rebalance_freq="Q", selection_index=None,
+                index_counts=None, prices_through=None, price_staleness_days=None,
+                rebalance_freq="Q", selection_index=None,
                 n_selection=None, n_quarterly_cross_sections=None) -> None:
     payload = {
         "generated_at": datetime.utcnow().isoformat() + "Z",
@@ -442,6 +505,8 @@ def export_meta(*, universe_size, n_sectors, horizon, source, learned_enabled,
         "universe_size": int(universe_size),
         "n_sectors": int(n_sectors),
         "n_cross_sections": int(n_cross_sections),
+        "prices_through": prices_through,
+        "price_staleness_days": price_staleness_days,
         "rebalance_freq": rebalance_freq,
         "selection_index": selection_index,
         "n_selection": int(n_selection) if n_selection is not None else None,
@@ -513,7 +578,7 @@ def export_all(*, panel, latest, score_col, decile_col, factor_ic, horizon_q,
         logger.warning("index membership flag unavailable: %s", exc)
         latest = latest.copy()
         latest["index_name"] = ""
-    export_scores(latest, score_col, decile_col)
+    export_scores(latest, score_col, decile_col, panel=panel)
     export_sector_deciles(latest, decile_col)
     export_torpedo(latest, score_col, decile_col, reliability=torp_rel, horizon=horizon_q)
     export_factor_ic(factor_ic, horizon_q)
@@ -531,7 +596,8 @@ def export_all(*, panel, latest, score_col, decile_col, factor_ic, horizon_q,
     export_exclusions(exclusions)
     export_drilldown(panel, latest, score_col, decile_col, earnings_events=earnings_events)
     export_transitions(panel, decile_col)
+    export_holdings(latest)
     export_overrides(ov_active, ov_scoreboard)
     export_meta(**meta_kwargs)
     logger.info("webapp_export: wrote scores/sector_deciles/torpedo/factor_ic/validation/"
-                "backtest/mc_sim/exclusions/drilldown/transitions/overrides + meta")
+                "backtest/mc_sim/exclusions/drilldown/transitions/overrides/holdings + meta")

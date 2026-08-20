@@ -6,6 +6,8 @@ export interface Meta {
   universe_size: number;
   n_sectors: number;
   n_cross_sections: number;
+  prices_through?: string | null;
+  price_staleness_days?: number | null;
   rebalance_freq?: string;
   selection_index?: string | null;
   n_selection?: number | null;
@@ -56,6 +58,9 @@ export interface ScoreRow {
   n_factors_used: number;
   short_pct_float: number | null;
   sell_rank: number | null;
+  prev_decile?: number | null;
+  prev_score?: number | null;
+  prev_date?: string | null;
   torpedo_score?: number | null;
   torpedo_pct?: number | null;
   torpedo_tier?: string | null;
@@ -271,6 +276,12 @@ export interface Overrides {
   active: OverrideRow[];
   scoreboard: OverrideScoreboard | Record<string, never>;
   reason_codes: string[];
+}
+
+export interface Holdings {
+  as_of: string | null;
+  source: string;
+  holdings: { ticker: string; note: string; in_universe: boolean }[];
 }
 
 export interface Transitions {

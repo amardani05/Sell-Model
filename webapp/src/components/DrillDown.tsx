@@ -1,6 +1,7 @@
 import { ReactNode, createContext, useContext, useMemo, useState } from "react";
-import { Bundle, fmt, fmtSigned, decileColor } from "../lib/data";
-import { DrilldownName } from "../lib/types";
+import { Bundle, fmt, fmtSigned, decileColor, loadDrilldown } from "../lib/data";
+import { Drilldown, DrilldownName, ScoreRow } from "../lib/types";
+import { topFlagsFromScore } from "../lib/flags";
 import { FACTOR_META, FAMILY_COLOR, factorLabel } from "../lib/factorMeta";
 import { Plot } from "./Plot";
 import { Term } from "./Term";
@@ -20,35 +21,63 @@ const Ctx = createContext<DrillDownAPI>({
 });
 export const useDrillDown = () => useContext(Ctx);
 
-function topDrivers(d: DrilldownName, k = 3): { f: string; z: number }[] {
-  return Object.entries(d.factors)
-    .filter(([, v]) => v && v.z != null)
-    .map(([f, v]) => ({ f, z: v!.z as number }))
-    .sort((a, b) => b.z - a.z)
-    .slice(0, k);
-}
-
 export function DrillDownProvider({ bundle, children }: { bundle: Bundle; children: ReactNode }) {
   const [ticker, setTicker] = useState<string | null>(null);
-  const dd = bundle.drilldown;
+  // The drill down payload is fetched on the first profile open and kept for
+  // the session. Clickability and the hover summary come from scores.json,
+  // which is already loaded and carries the same aligned z scores, so the
+  // whole table stays interactive before the big file has been touched.
+  const [dd, setDd] = useState<Drilldown | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const byTicker = useMemo(() => {
+    const m = new Map<string, ScoreRow>();
+    bundle.scores.forEach((r) => m.set(r.ticker.toUpperCase(), r));
+    return m;
+  }, [bundle.scores]);
 
   const api = useMemo<DrillDownAPI>(() => ({
-    open: (tk) => setTicker(dd.names[tk.toUpperCase()] ? tk.toUpperCase() : null),
-    close: () => setTicker(null),
-    has: (tk) => !!dd.names[tk.toUpperCase()],
-    hoverSummary: (tk) => {
-      const d = dd.names[tk.toUpperCase()];
-      if (!d) return "";
-      const tops = topDrivers(d).map((t) => `${factorLabel(t.f)} ${fmtSigned(t.z, 1)}σ`);
-      return `decile ${d.decile ?? "—"} · top flags: ${tops.join(", ")} · click for full breakdown`;
+    open: (tk) => {
+      const key = tk.toUpperCase();
+      if (!byTicker.has(key)) return;
+      setTicker(key);
+      setLoadError(null);
+      loadDrilldown().then(setDd).catch((e) => setLoadError(String(e)));
     },
-  }), [dd]);
+    close: () => setTicker(null),
+    has: (tk) => byTicker.has(tk.toUpperCase()),
+    hoverSummary: (tk) => {
+      const r = byTicker.get(tk.toUpperCase());
+      if (!r) return "";
+      const tops = topFlagsFromScore(r, 3)
+        .map((f) => `${factorLabel(f.factor)} ${fmtSigned(f.z, 1)}σ`);
+      return `decile ${r.decile ?? "—"}${tops.length ? ` · top flags: ${tops.join(", ")}` : ""}`
+        + " · click for full breakdown";
+    },
+  }), [byTicker]);
 
-  const sel = ticker ? dd.names[ticker] : null;
+  const sel = ticker && dd ? dd.names[ticker] ?? null : null;
   return (
     <Ctx.Provider value={api}>
       {children}
-      {sel && ticker && <DrillDownPanel ticker={ticker} d={sel} bundle={bundle} onClose={api.close} />}
+      {ticker && !sel && (
+        <>
+          <div className="dd-backdrop" onClick={api.close} />
+          <aside className="dd-panel" role="dialog" aria-label={`${ticker} factor breakdown`}>
+            <div className="dd-head">
+              <div><h2 className="dd-title">{ticker}</h2>
+                <span className="muted">
+                  {loadError ? "Could not load the factor breakdown." : "Loading factor breakdown…"}
+                </span></div>
+              <button className="dd-close" onClick={api.close} aria-label="close">✕</button>
+            </div>
+            {loadError && <p className="muted small">{loadError}</p>}
+          </aside>
+        </>
+      )}
+      {sel && ticker && dd && (
+        <DrillDownPanel ticker={ticker} d={sel} dd={dd} bundle={bundle} onClose={api.close} />
+      )}
     </Ctx.Provider>
   );
 }
@@ -102,10 +131,9 @@ function riskParagraph(ticker: string, d: DrilldownName, bundle: Bundle): string
 // ---------------------------------------------------------------------------
 // The panel
 // ---------------------------------------------------------------------------
-function DrillDownPanel({ ticker, d, bundle, onClose }: {
-  ticker: string; d: DrilldownName; bundle: Bundle; onClose: () => void;
+function DrillDownPanel({ ticker, d, dd, bundle, onClose }: {
+  ticker: string; d: DrilldownName; dd: Drilldown; bundle: Bundle; onClose: () => void;
 }) {
-  const dd = bundle.drilldown;
   const [copied, setCopied] = useState(false);
 
   const rows = dd.factor_order

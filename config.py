@@ -53,6 +53,13 @@ SELECTION_INDEX: str = "S&P 600"
 # that cross section (and logged).
 MIN_NAMES_PER_SECTOR: int = 5
 
+# Export floor (added after the 2026-07-20 incident, when a run that fetched
+# prices during a network outage scored 165 names and the daily job deployed
+# it): a full universe run whose latest cross section carries fewer names
+# than this refuses to export or exit cleanly, so the unattended deploy keeps
+# the previous good data. Synthetic and --max-tickers runs are exempt.
+MIN_UNIVERSE_FOR_EXPORT: int = 700
+
 # =============================================================================
 # Forward horizon + rebalance
 # =============================================================================
@@ -561,6 +568,25 @@ BATCH_DELAY_SECONDS: float = 2.0
 CACHE_MAX_AGE_SECONDS: int = 24 * 60 * 60
 MIN_TRADING_DAYS: int = 252     # a ticker needs >=1y of prices to be scored
 
+# Price refresh strategy. Re downloading 1001 tickers x 16 years EVERY morning
+# is what got the daily job rate limited into a month of stale data (the
+# 2026-07-20 to 2026-08-20 incident). Normal runs now fetch only a short recent
+# window and merge it into the cache; --refresh still forces a full rebuild.
+PRICE_INCREMENTAL_OVERLAP_DAYS: int = 7    # re fetch this much of the known tail
+# yfinance returns SPLIT/DIVIDEND ADJUSTED prices, so a corporate action
+# retroactively rescales a ticker's entire history. On every incremental merge
+# the overlap window is compared old vs new: a CONSTANT ratio means an
+# adjustment happened and the stored history is rescaled by it; an inconsistent
+# ratio means the series genuinely disagrees and that ticker is refetched in
+# full. Without this an adjusted tail grafted onto an unadjusted body would
+# manufacture the exact overnight jump the splice gate exists to catch.
+PRICE_ADJUSTMENT_TOLERANCE: float = 0.005  # 0.5% band around a constant ratio
+# Publishing guard: refuse to rebuild the dashboard when prices are this many
+# trading days behind today. A degraded download keeps the old cache on
+# purpose, but a dashboard stamped with today's date and built on last month's
+# prices is worse than no refresh at all.
+PRICE_MAX_STALE_TRADING_DAYS: int = 5
+
 # SEC EDGAR (no key — identify yourself via USER_AGENT and respect ~10 req/s)
 EDGAR_TICKER_CIK_URL: str = "https://www.sec.gov/files/company_tickers.json"
 EDGAR_COMPANYFACTS_URL: str = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
@@ -618,6 +644,7 @@ SP600_FALLBACK_CSV: Path = DATA_DIR / "sp600_fallback.csv"
 # Analyst override log (append only; see docs/override-layer-design.md).
 # Overrides are ANNOTATIONS — they never touch the score — and are scored
 # quarterly against realized relative returns.
+IMA_HOLDINGS_CSV: Path = DATA_DIR / "ima_holdings.csv"
 OVERRIDES_CSV: Path = DATA_DIR / "overrides.csv"
 OVERRIDE_MAX_AGE_QUARTERS: int = 2   # default expiry horizon if none supplied
 

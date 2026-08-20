@@ -63,7 +63,7 @@ def _setup_logging(verbose: bool) -> None:
 def build_real_panel(args) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Series, pd.DataFrame | None]:
     """Return (panel, prices, exclusions, benchmark_px) from live data."""
     from data_loader import (download_prices, download_benchmark, fetch_fundamentals,
-                             load_short_interest, load_volumes)
+                             load_short_interest, load_volumes, assert_price_freshness)
     from feature_engine import build_panel, _rebalance_dates, _fundamental_timeseries
     from universe import all_known_tickers, membership_panel, index_membership_map
 
@@ -78,6 +78,13 @@ def build_real_panel(args) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd
                 config.PRICE_HISTORY_START)
     prices = download_prices(tickers + [config.BENCHMARK_TICKER], force_refresh=args.refresh)
     prices = prices[[c for c in prices.columns if c != config.BENCHMARK_TICKER]]
+    # PUBLISHING GATE: the degraded download guard keeps the previous cache on
+    # purpose, but rebuilding every table on stale prices and stamping it with
+    # today's date is the one failure the honesty layer cannot survive. Abort
+    # here, before the expensive steps, so the unattended job leaves the last
+    # good site up (see scripts/daily_refresh.sh).
+    if not args.max_tickers:
+        assert_price_freshness(prices)
     volumes = load_volumes()
     try:
         bench_px = download_benchmark(years=config.PRICE_HISTORY_YEARS,
@@ -206,6 +213,16 @@ def run(args) -> None:
                                            else build_real_panel(args))
     if panel.empty:
         raise SystemExit("Panel is empty: check data sources / universe.")
+
+    # How far behind today the underlying prices are, published in meta.json so
+    # the dashboard can state its own freshness instead of implying that
+    # "generated today" means "priced today".
+    price_staleness = None
+    if prices is not None and len(prices):
+        import numpy as _np
+        from datetime import datetime as _dt
+        price_staleness = int(_np.busday_count(
+            pd.Timestamp(prices.index.max()).date(), _dt.utcnow().date()))
 
     if args.since:
         panel = panel[panel["date"] >= pd.Timestamp(args.since)].copy()
@@ -358,6 +375,14 @@ def run(args) -> None:
     # --- export ---
     latest_date = panel["date"].max()
     latest = panel[panel["date"] == latest_date].copy()
+    if not args.synthetic and not args.max_tickers:
+        n_latest = int(latest["ticker"].nunique())
+        if n_latest < config.MIN_UNIVERSE_FOR_EXPORT:
+            raise SystemExit(
+                f"EXPORT REFUSED: only {n_latest} names in the latest cross section "
+                f"(floor {config.MIN_UNIVERSE_FOR_EXPORT}). The data fetch was "
+                "degraded; fix the network and rerun. The dashboard keeps its "
+                "previous data.")
     if not args.no_webapp:
         logger.info("=== Webapp export ===")
         webapp_export.export_all(
@@ -388,6 +413,9 @@ def run(args) -> None:
                 n_quarterly_cross_sections=int(sel_q["date"].nunique()),
                 cost_bps=args.cost_bps, panel_rows=int(len(panel)),
                 n_delisted=int(panel["delisted"].sum()) if "delisted" in panel else 0,
+                prices_through=(str(pd.Timestamp(prices.index.max()).date())
+                                if prices is not None and len(prices) else None),
+                price_staleness_days=price_staleness,
                 exclusions_summary={
                     "n_labels_excluded": int(len(exclusions)),
                     "n_tickers": int(exclusions["ticker"].nunique()) if len(exclusions) else 0,
@@ -401,6 +429,20 @@ def run(args) -> None:
                    exclusions, diag, horizon, time.time() - t0,
                    term_structure=term_structure, icw_paired=icw_paired,
                    promotion=promotion, zoo=zoo, regime_ic=regime_ic)
+
+    # One machine readable line the unattended job lifts to the TOP of its log,
+    # so a glance answers the only question that matters after an overnight
+    # run: did the prices actually move, or did we just rebuild yesterday?
+    _ic = ic_summaries.get(horizon)
+    print("RUN SUMMARY: "
+          f"prices_through={pd.Timestamp(prices.index.max()).date() if prices is not None and len(prices) else 'na'} "
+          f"price_staleness_days={price_staleness if price_staleness is not None else 'na'} "
+          f"universe={int(latest['ticker'].nunique())} "
+          f"cross_sections={int(panel['date'].nunique())} "
+          f"default={score_col} "
+          f"ic={(_ic.mean_ic if _ic else float('nan')):+.4f} "
+          f"diagnostics={'pass' if diag.get('all_passed') else 'FAIL'} "
+          f"seconds={time.time() - t0:.0f}")
 
 
 # =============================================================================

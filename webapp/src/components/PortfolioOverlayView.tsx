@@ -5,17 +5,22 @@ import { Term } from "./Term";
 import { Ticker } from "./TickerFlag";
 import { ScoreRow } from "../lib/types";
 import { factorLabel } from "../lib/factorMeta";
+import { topFlagsFromScore } from "../lib/flags";
 
-// Default long only sleeve overlaid out of the box; user can paste their own.
-const SAMPLE = [
+// Fallback sleeve, used only when data/ima_holdings.csv has not been published
+// yet. The live book comes from the pipeline (holdings.json) so the overlay
+// refreshes with the fund, not with the next code deploy.
+const FALLBACK_SLEEVE = [
   "TDS", "PRDO", "MCRI", "CVCO", "UNFI", "CRGY", "AX", "PFBC", "ENVA", "NEOG",
   "KRYS", "FSS", "GTES", "MYRG", "DOCN", "KLIC", "VIAV", "CE", "CTRE", "AVA",
 ].join(", ");
 
-export function PortfolioOverlayView({ meta, scores, drilldown, transitions, overrides }: Bundle) {
+export function PortfolioOverlayView({ meta, scores, transitions, overrides, holdings }: Bundle) {
+  const publishedSleeve = (holdings?.holdings ?? []).map((h) => h.ticker).join(", ");
+  const sleeveSource = publishedSleeve ? holdings.source : "built in fallback list";
   const activeOv = overrides?.active ?? [];
   const ovFor = (tk: string) => activeOv.filter((o) => o.ticker === tk);
-  const [text, setText] = useState(SAMPLE);
+  const [text, setText] = useState(publishedSleeve || FALLBACK_SLEEVE);
   const [copied, setCopied] = useState(false);
   const byTicker = useMemo(() => {
     const m = new Map<string, ScoreRow>();
@@ -28,23 +33,21 @@ export function PortfolioOverlayView({ meta, scores, drilldown, transitions, ove
   const missing = tickers.filter((t) => !byTicker.has(t));
   const n = 10;
 
-  const dd = drilldown.names;
-  const topFlags = (tk: string, k = 2): { f: string; z: number }[] => {
-    const d = dd[tk];
-    if (!d) return [];
-    return Object.entries(d.factors)
-      .filter(([, v]) => v && v.z != null && (v.z as number) > 0.5)
-      .map(([f, v]) => ({ f, z: v!.z as number }))
-      .sort((a, b) => b.z - a.z)
-      .slice(0, k);
-  };
+  // Flags and quarter over quarter movement come from scores.json, which
+  // carries the aligned z scores plus the prior quarter's rank. The heavy per
+  // name drill down is only fetched when someone actually opens a profile.
+  const topFlags = (tk: string, k = 2) =>
+    topFlagsFromScore(byTicker.get(tk), k, 0.5).map((f) => ({ f: f.factor, z: f.z }));
   const qoq = (tk: string): number | null => {
-    const d = dd[tk];
-    return d && d.decile != null && d.prev_decile != null ? d.decile - d.prev_decile : null;
+    const r = byTicker.get(tk);
+    const prev = r?.prev_decile as number | null | undefined;
+    return r && r.decile != null && prev != null ? r.decile - prev : null;
   };
   const isNew = (tk: string): boolean => {
-    const d = dd[tk];
-    return !!d && (d.decile ?? 0) >= n - 1 && (d.prev_decile == null || (d.prev_decile ?? 0) < n - 1);
+    const r = byTicker.get(tk);
+    if (!r) return false;
+    const prev = r.prev_decile as number | null | undefined;
+    return (r.decile ?? 0) >= n - 1 && (prev == null || prev < n - 1);
   };
   const isDouble = (r: ScoreRow): boolean =>
     (r.decile ?? 0) >= n - 1 && r.torpedo_tier === "Elevated";
@@ -65,7 +68,7 @@ export function PortfolioOverlayView({ meta, scores, drilldown, transitions, ove
       return `| ${r.ticker} | ${r.gics_sector} | ${r.decile ?? "—"} | ${dq == null ? "—" : dq > 0 ? `+${dq}` : dq} | ${flags} | ${r.torpedo_tier ?? "—"} | ${badges} |`;
     });
     const md = [
-      `# Holdings risk review: ${drilldown.as_of} (Relative Sell Model)`,
+      `# Holdings risk review: ${asOf} (Relative Sell Model)`,
       ``,
       `${held.length} matched · ${inWorst.length} in decile 10 · ${newlyFlagged.length} newly flagged (9 or 10) · ${doubles.length} double flagged · mean decile ${meanDecile.toFixed(1)}/10`,
       ``,
@@ -79,6 +82,7 @@ export function PortfolioOverlayView({ meta, scores, drilldown, transitions, ove
     catch { /* clipboard unavailable */ }
   };
 
+  const asOf = holdings?.as_of ?? (scores[0]?.date ? String(scores[0].date).slice(0, 10) : "latest");
   const matrix = transitions?.row_prob ?? [];
 
   return (
@@ -89,7 +93,7 @@ export function PortfolioOverlayView({ meta, scores, drilldown, transitions, ove
           Paste your long only sleeve (tickers, any separator). Each holding is matched to its
           <Term id="sectorneutral"> sector neutral</Term> <Term id="decile">decile</Term> and
           <Term id="relativereturn"> relative risk</Term> score from the latest cross section
-          ({drilldown.as_of}). <strong>Click any ticker for the full factor decomposition and a copyable risks
+          ({asOf}). <strong>Click any ticker for the full factor decomposition and a copyable risks
           section draft.</strong>
         </p>
         <div className="help-note">
@@ -102,6 +106,14 @@ export function PortfolioOverlayView({ meta, scores, drilldown, transitions, ove
           this platform produces.
         </div>
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} spellCheck={false} />
+        <p className="muted small">
+          Sleeve loaded from <code>{sleeveSource}</code>
+          {publishedSleeve ? <> ({holdings.holdings.length} names, refreshed with the daily run
+          {holdings.as_of ? <> on {holdings.as_of}</> : null}). Edit that file when the fund trades and the next
+          refresh updates this list, no code change needed.</> : <>. Publish
+          <code> data/ima_holdings.csv</code> to have the daily run keep this in step with the book.</>}
+          {" "}Edits here are local to your browser and do not change the published sleeve.
+        </p>
         <div className="overlay-summary">
           <span><strong>{held.length}</strong> matched</span>
           <span className={inWorst.length ? "neg" : "pos"}><strong>{inWorst.length}</strong> in worst decile</span>

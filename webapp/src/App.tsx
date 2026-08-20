@@ -70,6 +70,7 @@ export default function App() {
           {" "}{m.n_sectors} sectors · {m.n_cross_sections} {m.rebalance_freq === "M" ? "monthly" : "quarterly"} cross sections ·
           horizon {m.horizon_q}Q · source <code>{m.source}</code> ·
           default score <code>{m.default_score}</code> ·
+          <strong> prices through {m.prices_through ?? "unknown"}</strong> ·
           generated {new Date(m.generated_at).toLocaleString()}
           <br />
           <span className="idx-legend">
@@ -78,6 +79,15 @@ export default function App() {
           </span>
         </span>
       </header>
+
+      {(m.price_staleness_days ?? 0) > 5 && (
+        <div className="banner stale">
+          ⚠ Stale prices: this page was generated {new Date(m.generated_at).toLocaleDateString()}, but the newest
+          price it contains is <strong>{m.prices_through}</strong>, {m.price_staleness_days} trading days behind.
+          Every score, decile and chart below describes that earlier date, not today. The refresh could not reach
+          the price source; rerun <code>python3 main.py --refresh</code> on a good connection.
+        </div>
+      )}
 
       {!m.membership_point_in_time && (
         <div className="banner warn">

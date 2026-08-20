@@ -1,0 +1,25 @@
+# IMA long only sleeve, read by the daily pipeline and published to the
+# dashboard's Portfolio Overlay as the default book. Edit this file when the
+# fund trades; the next refresh picks it up with no code change and no rebuild.
+# Columns: ticker, note (free text, optional). Blank lines and # are ignored.
+ticker,note
+TDS,
+PRDO,
+MCRI,
+CVCO,
+UNFI,
+CRGY,
+AX,
+PFBC,
+ENVA,
+NEOG,
+KRYS,
+FSS,
+GTES,
+MYRG,
+DOCN,
+KLIC,
+VIAV,
+CE,
+CTRE,
+AVA,

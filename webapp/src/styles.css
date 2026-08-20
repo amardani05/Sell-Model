@@ -220,3 +220,7 @@ textarea { width: 100%; resize: vertical; }
   box-shadow: 0 6px 22px rgba(10, 25, 45, 0.35); pointer-events: none;
   white-space: normal; text-align: left;
 }
+
+/* stale data banner: louder than the survivorship warning, because a fresh
+   timestamp over stale numbers is the one thing a viewer cannot detect */
+.banner.stale { background: #fdecec; border: 1px solid #e3a0a0; color: #7a1520; font-weight: 500; }

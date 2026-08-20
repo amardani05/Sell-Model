@@ -49,7 +49,7 @@ def load_overrides(path=config.OVERRIDES_CSV) -> pd.DataFrame:
         return pd.DataFrame(columns=COLUMNS)
     missing = [c for c in COLUMNS if c not in df.columns]
     if missing:
-        logger.warning("overrides.csv missing columns %s — ignoring file", missing)
+        logger.warning("overrides.csv missing columns %s, ignoring file", missing)
         return pd.DataFrame(columns=COLUMNS)
 
     df = df[COLUMNS].copy()
