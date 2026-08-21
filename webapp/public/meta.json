@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-08-20T21:13:36.361398Z",
+  "generated_at": "2026-08-21T14:54:04.174194Z",
   "model": "Relative Sell Model (sector neutral relative underperformance ranking)",
   "universe_size": 995,
   "n_sectors": 11,
   "n_cross_sections": 200,
   "prices_through": "2026-08-19",
-  "price_staleness_days": 1,
+  "price_staleness_days": 2,
   "rebalance_freq": "M",
   "selection_index": "S&P 600",
   "n_selection": 598,
@@ -65,10 +65,10 @@
   "use_estimate_factors": false,
   "diagnostics": {
     "placebo": {
-      "real_ic": 0.06795281142860367,
-      "real_t": 3.7038500507693457,
-      "placebo_ic_mean": -0.0008770827034034004,
-      "placebo_ic_std": 0.002874886212372085,
+      "real_ic": 0.06795928104444794,
+      "real_t": 3.7033155430415663,
+      "placebo_ic_mean": -0.0008673529660489308,
+      "placebo_ic_std": 0.002854594437077702,
       "tolerance": 0.03,
       "passed": true
     },
