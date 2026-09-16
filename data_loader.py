@@ -42,6 +42,37 @@ import config
 logger = logging.getLogger(__name__)
 
 
+def ensure_fd_headroom(minimum: int = 4096) -> int:
+    """Raise this process's open file limit if it is too low for threaded fetches.
+
+    Root cause of the 2026-07-20 .. 2026-09-16 outage: launchd starts user
+    agents with a 256 descriptor soft limit, and ``yf.download(threads=True)``
+    opens 40 sockets per batch plus yfinance's sqlite cache, so every
+    unattended price fetch died with "unable to open database file" and
+    "getaddrinfo() thread failed to start" while manual runs from a shell
+    (limit ~1M) always worked. The plist and the shell script now raise the
+    limit too; this is the last line of defense and it logs the number, so
+    the next time downloads fail the log answers the question immediately.
+    """
+    try:
+        import resource
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < minimum:
+            target = minimum if hard == resource.RLIM_INFINITY else min(minimum, hard)
+            resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
+            soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+            logger.info("Open file limit raised to %d for threaded downloads", soft)
+        else:
+            logger.info("Open file limit: %d", soft)
+        if soft < 1024:
+            logger.warning("Open file limit is still only %d; threaded downloads may "
+                           "fail with 'unable to open database file'", soft)
+        return int(soft)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("could not inspect/raise the open file limit: %s", exc)
+        return -1
+
+
 def _cache_is_fresh(path: Path, max_age: int = config.CACHE_MAX_AGE_SECONDS) -> bool:
     return path.exists() and (time.time() - path.stat().st_mtime) < max_age
 
@@ -324,6 +355,7 @@ def download_prices(
     end = end_dt.isoformat()
     tickers = sorted({t.upper() for t in tickers})
 
+    ensure_fd_headroom()
     if is_universe_cache and not force_refresh and cache_path.exists():
         merged = _incremental_refresh(tickers, cache_path, end)
         if merged is not None:

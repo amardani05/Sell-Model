@@ -27,6 +27,17 @@
     <key>HOME</key>
     <string>/Users/amardani</string>
   </dict>
+  <!-- launchd starts user agents with a 256 open file limit. yfinance's
+       threaded downloads open 40 sockets per batch plus a sqlite cache, so
+       every automated price fetch from 2026-07-20 to 2026-09-16 exhausted
+       that limit and silently fetched almost nothing ("unable to open
+       database file", "getaddrinfo() thread failed to start"). Manual runs
+       from a shell (limit ~1M) always worked, which is why it hid so long. -->
+  <key>SoftResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>8192</integer>
+  </dict>
   <key>StandardOutPath</key>
   <string>/Users/amardani/Sell-Model/output/daily/launchd.out</string>
   <key>StandardErrorPath</key>

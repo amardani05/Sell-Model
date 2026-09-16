@@ -165,11 +165,18 @@ is exactly why the code keeps the baseline in charge.
 
 Two failure modes, both learned the hard way:
 
-* **Rate limiting from re downloading everything daily.** Pulling 1001 tickers x 16
-  years every morning got the job throttled, and from 2026-07-20 to 2026-08-20 every
-  run fetched a gutted universe. Normal runs now fetch only a short recent window and
-  merge it into the cache (`_incremental_refresh`); `--refresh` still forces a full
-  rebuild, and the daily job does one every Monday as a safety net.
+* **The unattended job could not open enough files.** launchd starts user agents with
+  a 256 open file limit; `yf.download(threads=True)` opens 40 sockets per batch plus
+  yfinance's sqlite cache, so from 2026-07-20 to 2026-09-16 every automated price
+  fetch died with `unable to open database file` and `getaddrinfo() thread failed to
+  start` while manual runs from a shell (limit ~1M) always worked, which is why it hid
+  for two months and was first misread as Yahoo rate limiting. The limit is now
+  raised in three places: `SoftResourceLimits` in the launchd plist, `ulimit -n` in
+  `daily_refresh.sh`, and `data_loader.ensure_fd_headroom()` inside the process,
+  which also logs the number so the next failure is diagnosable from the log alone.
+  Normal runs still fetch only a short recent window and merge it
+  (`_incremental_refresh`), which is lighter and faster regardless; `--refresh`
+  forces a full rebuild, and the daily job does one every Monday as a safety net.
 * **Publishing stale numbers under a fresh timestamp.** The degraded download guard
   correctly refuses to overwrite a good cache with a partial one, but on its own it let
   the pipeline rebuild every table from month old prices and stamp it with today's

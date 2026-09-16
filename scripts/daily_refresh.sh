@@ -28,6 +28,15 @@ trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 cd "$REPO" || exit 1
 echo "=== daily refresh started $(date) ===" >> "$LOG"
 
+# FILE DESCRIPTOR LIMIT (root cause of the 2026-07-20 .. 2026-09-16 outage):
+# launchd hands user agents a 256 open file limit, and yfinance's threaded
+# downloads blow through it, so every automated price fetch failed while
+# manual runs from a shell (limit ~1M) succeeded. Raise it here as well as in
+# the plist so the job is safe however it is launched. The hard limit is
+# unlimited for user agents, so this always succeeds.
+ulimit -n 8192 2>/dev/null || ulimit -n 4096 2>/dev/null || true
+echo "open file limit for this run: $(ulimit -n)" >> "$LOG"
+
 # NETWORK PREFLIGHT (added after the 2026-07-20 incident): launchd fires on
 # wake before WiFi and DNS are up, and a pipeline started without network
 # fetches a gutted universe. Wait up to 10 minutes for real DNS resolution;
