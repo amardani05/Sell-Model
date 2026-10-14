@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-10-13T14:21:54.176257Z",
+  "generated_at": "2026-10-14T14:00:04.776924Z",
   "model": "Relative Sell Model (sector neutral relative underperformance ranking)",
   "universe_size": 988,
   "n_sectors": 11,
   "n_cross_sections": 202,
-  "prices_through": "2026-10-12",
+  "prices_through": "2026-10-13",
   "price_staleness_days": 1,
   "rebalance_freq": "M",
   "selection_index": "S&P 600",
