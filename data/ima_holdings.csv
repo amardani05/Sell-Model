@@ -2,24 +2,28 @@
 # dashboard's Portfolio Overlay as the default book. Edit this file when the
 # fund trades; the next refresh picks it up with no code change and no rebuild.
 # Columns: ticker, note (free text, optional). Blank lines and # are ignored.
+#
+# Source: IMA Portfolio.xlsx, Portfolio tab, units last updated 2026-10-14.
+# The FEDXX cash line in that sheet is deliberately not listed here: the
+# overlay scores equities against sector peers and cash has no decile.
 ticker,note
-TDS,
-PRDO,
-MCRI,
-CVCO,
-UNFI,
-CRGY,
-AX,
-PFBC,
-ENVA,
-NEOG,
-KRYS,
-FSS,
-GTES,
-MYRG,
-DOCN,
-KLIC,
-VIAV,
-CE,
-CTRE,
-AVA,
+QNST,Communication Services 3.4%
+PRDO,Consumer Discretionary 4.4%
+MCRI,Consumer Discretionary 4.5%
+CVCO,Consumer Discretionary 4.6%
+UNFI,Consumer Staples 3.7%
+SM,Energy 6.7%
+AX,Financials 6.5%
+PFBC,Financials 6.9%
+ENVA,Financials 5.3%
+NEOG,Healthcare 5.7%
+KRYS,Healthcare 5.2%
+FSS,Industrials 5.9%
+GTES,Industrials 6.0%
+MYRG,Industrials 5.9%
+RAL,Information Technology 4.6%
+KLIC,Information Technology 4.2%
+VIAV,Information Technology 3.9%
+CENX,Materials 4.6%
+CTRE,Real Estate 6.1%
+AVA,Utilities 1.5%
