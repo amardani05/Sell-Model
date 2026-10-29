@@ -111,6 +111,59 @@ DEGRADED=$(grep -c "PRICE REFRESH DEGRADED\|PRICE DOWNLOAD DEGRADED\|PRICE REFRE
   cat "$LOG"
 } > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
 
+# ---------------------------------------------------------------------------
+# ALERTING. Two multi week outages (descriptor limit, expired Vercel token)
+# were both announced at the top of every log and went unnoticed for weeks,
+# so failures now have to leave the machine. A deploy failure in particular
+# cannot be reported by the dashboard, because the dashboard is the thing
+# that did not get updated.
+#
+# Three cases are worth an email, and nothing else is:
+#   FAILED     something broke today
+#   RECOVERED  it was broken yesterday and is fine now, so the inbox closes
+#              the loop instead of leaving an open alert
+#   HEARTBEAT  one healthy Monday note, so that silence is informative. If
+#              the job stops running entirely (laptop off, agent unloaded)
+#              no failure mail can ever be sent, and the missing Monday note
+#              is the only signal left.
+# ---------------------------------------------------------------------------
+LAST_STATUS_FILE="$LOG_DIR/last_status"
+PREV_STATUS=$(cat "$LAST_STATUS_FILE" 2>/dev/null || echo "UNKNOWN")
+printf '%s\n' "$STATUS" > "$LAST_STATUS_FILE"
+
+SUMMARY_BLOCK=$(sed -n '1,7p' "$LOG")
+NOTIFY="$REPO/scripts/notify.sh"
+
+if [ "$STATUS" != "OK" ]; then
+  ERR_CONTEXT=$(grep -iE "Error|Traceback|FAILED|DEGRADED|StalePriceData|Not authorized" "$LOG" \
+                | grep -v "ERROR yfinance" | tail -12)
+  "$NOTIFY" "Sell Model refresh FAILED: $STATUS" \
+"$SUMMARY_BLOCK
+
+What went wrong (last lines that matched):
+$ERR_CONTEXT
+
+The site still serves its previous data; nothing stale was published.
+Full log: $LOG" >> "$LOG" 2>&1
+elif [ "$PREV_STATUS" != "OK" ] && [ "$PREV_STATUS" != "UNKNOWN" ]; then
+  "$NOTIFY" "Sell Model refresh recovered" \
+"Previous run status was: $PREV_STATUS
+Today's run completed and deployed.
+
+$SUMMARY_BLOCK
+
+Full log: $LOG" >> "$LOG" 2>&1
+elif [ "$(date +%u)" -eq 1 ]; then
+  "$NOTIFY" "Sell Model weekly check: healthy" \
+"Weekly confirmation that the daily refresh is alive. If this note does not
+arrive on a Monday, the job itself has stopped running and no failure mail
+would ever be sent.
+
+$SUMMARY_BLOCK
+
+Full log: $LOG" >> "$LOG" 2>&1
+fi
+
 if [ "$STATUS" != "OK" ]; then
   exit 1
 fi
